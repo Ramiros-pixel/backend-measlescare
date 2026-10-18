@@ -1,0 +1,34 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: huawei-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PW}"
+      MYSQL_DATABASE: db_huawei
+    ports:
+      - "3306:3306"   # hapus bila tidak butuh akses MySQL dari luar container
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: .
+    container_name: huawei-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "mysql+pymysql://root:${DB_ROOT_PW}@db:3306/db_huawei"
+      SECRET_KEY: "${SECRET_KEY}"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "${ACCESS_TOKEN_EXPIRE_MINUTES}"
+    ports:
+      - "8000:8000"
+
+volumes:
+  db_data:
