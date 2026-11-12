@@ -3,13 +3,17 @@ services:
     image: mysql:8.4
     container_name: huawei-db
     restart: unless-stopped
+    # hemat RAM (host cuma 2GB): kecilkan buffer pool, matikan performance_schema
+    command:
+      - --innodb-buffer-pool-size=128MB
+      - --performance-schema=OFF
     environment:
       MYSQL_ROOT_PASSWORD: "${DB_ROOT_PW}"
       MYSQL_DATABASE: db_huawei
-    ports:
-      - "3306:3306"   # hapus bila tidak butuh akses MySQL dari luar container
+    # tidak dipublish ke host/internet; hanya bisa diakses via network internal compose
     volumes:
       - db_data:/var/lib/mysql
+    mem_limit: 512m
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
       interval: 5s
@@ -27,8 +31,14 @@ services:
       DATABASE_URL: "mysql+pymysql://root:${DB_ROOT_PW}@db:3306/db_huawei"
       SECRET_KEY: "${SECRET_KEY}"
       ACCESS_TOKEN_EXPIRE_MINUTES: "${ACCESS_TOKEN_EXPIRE_MINUTES}"
+      # API_PREFIX kosong karena funnel mount di /api dan melepas prefix sebelum proxy
+      API_PREFIX: ""
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"   # loopback saja; publik via Tailscale funnel
+    # dataset & model wajah disimpan di host agar persisten antar rebuild
+    volumes:
+      - ./process-recognation:/app/process-recognation
+    mem_limit: 512m
 
 volumes:
   db_data:

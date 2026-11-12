@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.db.session import Base, SessionLocal, engine
 from app.models import gejala as models  # pastikan semua model terdaftar
-from app.routers import auth, gejala, users
+from app.routers import auth, face, gejala, users
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -26,6 +26,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix=settings.API_PREFIX)
 app.include_router(users.router, prefix=settings.API_PREFIX)
 app.include_router(gejala.router, prefix=settings.API_PREFIX)
+app.include_router(face.router, prefix=settings.API_PREFIX)
 
 
 @app.on_event("startup")

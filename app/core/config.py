@@ -9,7 +9,7 @@ class Settings:
     """Konfigurasi aplikasi, dibaca dari environment / file .env."""
 
     APP_NAME: str = "Huawei ICT Backend"
-    API_PREFIX: str = "/api"
+    API_PREFIX: str = os.getenv("API_PREFIX", "/api")
 
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
