@@ -1,0 +1,14 @@
+{
+  "project": "backend-measlescare",
+  "convention": "1 folder per file; subfolder per prompt",
+  "updated_at": "2026-11-12T22:14:11+07:00",
+  "tracks": [
+    {
+      "file": "AGENTS.md",
+      "folder": "AGENTS.md/001_2026-11-12_buat-agents-md-inisialisasi-agent",
+      "summary": "buat-agents-md-inisialisasi-agent",
+      "prompt": "Buat AGENTS.md — berkas inisialisasi agent AI untuk proyek MeaslesCare (peran, ruang lingkup backend-only, aturan backend, struktur proyek, keamanan & privasi data kesehatan, konvensi kode, cara kerja, mode inovasi, larangan) + konvensi changetracks.",
+      "at": "2026-11-12T22:14:11+07:00"
+    }
+  ]
+}

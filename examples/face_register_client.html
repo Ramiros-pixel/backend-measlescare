@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registrasi Wajah — Huawei ICT Backend</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: #0f1115; color: #e6e9ef; display: flex; justify-content: center;
+  }
+  .wrap { width: 100%; max-width: 880px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  p.sub { margin: 0 0 20px; color: #9aa4b2; font-size: 13px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; align-items: start; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: #171a21; border: 1px solid #262b35; border-radius: 12px; padding: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: #9aa4b2; margin: 0 0 12px; }
+  label { display: block; font-size: 12px; color: #9aa4b2; margin: 10px 0 4px; }
+  input, select {
+    width: 100%; padding: 9px 10px; border-radius: 8px; border: 1px solid #2c333f;
+    background: #0f1218; color: #e6e9ef; font-size: 14px;
+  }
+  button {
+    margin-top: 14px; width: 100%; padding: 11px; border: 0; border-radius: 9px; cursor: pointer;
+    background: #2f6df6; color: #fff; font-size: 14px; font-weight: 600;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.ghost { background: #24303f; }
+  video { width: 100%; border-radius: 10px; background: #000; transform: scaleX(-1); }
+  .bar { height: 10px; border-radius: 99px; background: #232936; overflow: hidden; margin-top: 14px; }
+  .bar > i { display: block; height: 100%; width: 0; background: linear-gradient(90deg,#2f6df6,#3ddc97); transition: width .2s; }
+  .row { display: flex; justify-content: space-between; font-size: 12px; color: #9aa4b2; margin-top: 6px; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #6b7280; margin-right: 6px; }
+  .dot.on { background: #3ddc97; box-shadow: 0 0 8px #3ddc97; }
+  .dot.off { background: #ef4444; }
+  #log {
+    margin-top: 14px; max-height: 210px; overflow: auto; background: #0c0f14; border-radius: 8px;
+    padding: 10px; font: 12px/1.6 ui-monospace, monospace; color: #9aa4b2; white-space: pre-wrap;
+  }
+  .ok { color: #3ddc97; } .err { color: #ef4444; } .warn { color: #fbbf24; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Registrasi Wajah</h1>
+  <p class="sub">Isi NIK / Nama / Tanggal lahir sekali. Selanjutnya pengumpulan data wajah berjalan
+    otomatis selama wajah tertangkap kamera — tanpa mengetik apa pun.</p>
+
+  <div class="grid">
+    <div class="card">
+      <h2>1. Data diri (label training)</h2>
+      <label>Base URL API</label>
+      <input id="base" value="http://127.0.0.1:8000">
+      <label>NIK (16 digit)</label>
+      <input id="nik" placeholder="3201234567890123" maxlength="16">
+      <label>Nama lengkap</label>
+      <input id="name" placeholder="Nama Sesuai KTP">
+      <label>Tanggal lahir</label>
+      <input id="dob" type="date">
+      <label>Alamat (opsional)</label>
+      <input id="alamat" placeholder="-">
+      <label>Password</label>
+      <input id="pass" type="password" placeholder="min. 6 karakter">
+      <label>Role</label>
+      <select id="role"><option value="R2">User</option><option value="R1">Admin</option></select>
+      <button id="btnRegister">Daftar &amp; mulai pengambilan wajah</button>
+      <div id="log"></div>
+    </div>
+
+    <div class="card">
+      <h2>2. Pengumpulan data wajah</h2>
+      <video id="cam" autoplay playsinline muted></video>
+      <div class="bar"><i id="fill"></i></div>
+      <div class="row">
+        <span id="statusTxt"><span class="dot" id="dot"></span>menunggu</span>
+        <span id="counter">0 / 100 sampel</span>
+      </div>
+      <button id="btnCapture" disabled>Mulai pengambilan data</button>
+      <button id="btnTrain" class="ghost" disabled>3. Latih model (train)</button>
+      <button id="btnFaceLogin" class="ghost" disabled>4. Coba login dengan wajah</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Konfigurasi klien
+// ---------------------------------------------------------------------------
+const CAPTURE_INTERVAL_MS = 200;   // jeda antar frame yang dikirim
+const JPEG_QUALITY = 0.85;
+const FRAME_W = 480, FRAME_H = 360;
+
+const $ = (id) => document.getElementById(id);
+let stream = null, token = null, timer = null, lastResult = null;
+
+function log(msg, cls = "") {
+  const line = document.createElement("div");
+  if (cls) line.className = cls;
+  line.textContent = new Date().toLocaleTimeString() + "  " + msg;
+  $("log").appendChild(line);
+  $("log").scrollTop = $("log").scrollHeight;
+}
+
+async function api(path, { method = "GET", body, auth = true } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (auth && token) headers.Authorization = "Bearer " + token;
+  const res = await fetch($("base").value.trim() + path, {
+    method, headers, body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = {};
+  try { data = await res.json(); } catch (_) {}
+  return { ok: res.ok, status: res.status, data };
+}
+
+// ---------------------------------------------------------------------------
+// Kamera
+// ---------------------------------------------------------------------------
+async function startCamera() {
+  if (stream) return;
+  stream = await navigator.mediaDevices.getUserMedia({
+    video: { width: { ideal: FRAME_W }, height: { ideal: FRAME_H }, facingMode: "user" },
+    audio: false,
+  });
+  $("cam").srcObject = stream;
+}
+
+function grabFrame() {
+  const v = $("cam");
+  const c = document.createElement("canvas");
+  c.width = FRAME_W; c.height = FRAME_H;
+  c.getContext("2d").drawImage(v, 0, 0, FRAME_W, FRAME_H);
+  // Kirim base64 tanpa prefix data URL
+  return c.toDataURL("image/jpeg", JPEG_QUALITY).split(",")[1];
+}
+
+function setDot(state) { // "on" | "off" | ""
+  $("dot").className = "dot" + (state ? " " + state : "");
+}
+
+// ---------------------------------------------------------------------------
+// 1) Register + login
+// ---------------------------------------------------------------------------
+$("btnRegister").onclick = async () => {
+  const nik = $("nik").value.trim(), name = $("name").value.trim();
+  if (!nik || !name || !$("dob").value || !$("pass").value) {
+    log("NIK, Nama, Tanggal lahir, dan Password wajib diisi.", "err"); return;
+  }
+  $("btnRegister").disabled = true;
+  try {
+    const reg = await api("/auth/register", {
+      method: "POST", auth: false,
+      body: {
+        NIK: nik, Name: name, Tgl_lahir: $("dob").value,
+        Alamat: $("alamat").value || null, password: $("pass").value,
+        id_Role: $("role").value,
+      },
+    });
+    if (!reg.ok && reg.status !== 409) throw new Error("register: " + JSON.stringify(reg.data));
+    log(reg.status === 409 ? "Akun sudah ada, lanjut login." : "Akun dibuat.", "ok");
+
+    const li = await api("/auth/login", { method: "POST", auth: false, body: { NIK: nik, password: $("pass").value } });
+    if (!li.ok) throw new Error("login: " + JSON.stringify(li.data));
+    token = li.data.access_token;
+    log("Login berhasil, token JWT diterima.", "ok");
+
+    const st = await api("/face/status");
+    log("Status awal: " + JSON.stringify(st.data), "");
+    $("counter").textContent = (st.data.my_samples || 0) + " / " + (st.data.target || 100) + " sampel";
+
+    await startCamera();
+    $("btnCapture").disabled = false;
+    log("Kamera aktif. Klik 'Mulai pengambilan data'.", "ok");
+  } catch (e) {
+    log("" + e.message, "err");
+  } finally { $("btnRegister").disabled = false; }
+};
+
+// ---------------------------------------------------------------------------
+// 2) Loop pengambilan data — otomatis, berbasis waktu
+// ---------------------------------------------------------------------------
+$("btnCapture").onclick = () => {
+  if (timer) return stopCapture();
+  $("btnCapture").textContent = "Stop";
+  timer = setInterval(sendFrame, CAPTURE_INTERVAL_MS);
+  log("Mulai pengumpulan data wajah...", "warn");
+  sendFrame();
+};
+
+function stopCapture() {
+  clearInterval(timer); timer = null;
+  $("btnCapture").textContent = "Mulai pengambilan data";
+  setDot("");
+}
+
+async function sendFrame() {
+  if (!$("cam").videoWidth) return;
+  const { ok, data, status } = await api("/face/capture", { method: "POST", body: { image: grabFrame() } });
+  if (!ok) { log("capture gagal (HTTP " + status + "): " + JSON.stringify(data), "err"); return stopCapture(); }
+
+  lastResult = data;
+  const pct = Math.min(100, (data.stored / data.target) * 100);
+  $("fill").style.width = pct + "%";
+  $("counter").textContent = data.stored + " / " + data.target + " sampel";
+  setDot(data.face_detected ? "on" : "off");
+  $("statusTxt").innerHTML = $("dot").outerHTML + (data.face_detected ? "wajah terdeteksi" : "wajah tidak terdeteksi");
+
+  if (data.completed) {
+    stopCapture();
+    log("Target sampel tercapai: " + data.stored, "ok");
+    $("btnTrain").disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 3) Training & 4) login wajah
+// ---------------------------------------------------------------------------
+$("btnTrain").onclick = async () => {
+  $("btnTrain").disabled = true;
+  log("Training model LBPH...", "warn");
+  const { ok, data, status } = await api("/face/train", { method: "POST" });
+  if (!ok) { log("train gagal (HTTP " + status + "): " + JSON.stringify(data), "err"); $("btnTrain").disabled = false; return; }
+  log("Training selesai: " + JSON.stringify(data), "ok");
+  $("btnFaceLogin").disabled = false;
+};
+
+$("btnFaceLogin").onclick = async () => {
+  const { ok, data, status } = await api("/face/login", { method: "POST", auth: false, body: { image: grabFrame() } });
+  if (!ok) { log("login wajah gagal (HTTP " + status + "): " + JSON.stringify(data), "err"); return; }
+  log("Login wajah sukses: " + data.user.NIK + " — " + data.user.Name + " (" + data.user.role_name + ")", "ok");
+};
+
+window.addEventListener("beforeunload", () => { if (stream) stream.getTracks().forEach(t => t.stop()); });
+</script>
+</body>
+</html>

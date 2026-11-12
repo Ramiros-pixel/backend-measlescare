@@ -588,6 +588,339 @@
           "response": []
         }
       ]
+    },
+    {
+      "name": "Face Recognition",
+      "item": [
+        {
+          "name": "Status Wajah Saya",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "console.log('progres sampel:', j.my_samples + '/' + j.target,",
+                  "            '| model:', j.model_exists, '| label:', j.model_users);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "status"
+              ]
+            },
+            "description": "Progres sampel wajah user yang login + status model.\n\n- model_users: jumlah label di model\n- total_samples: sampel yang ikut training\n- unlabeled_samples: folder dataset tanpa user terdaftar (dilewati)\n- my_samples / target: progres pengumpulan data wajah Anda"
+          },
+          "response": []
+        },
+        {
+          "name": "Capture Frame Wajah",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "console.log('stored', j.stored + '/' + j.target, '| terdeteksi:', j.face_detected);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image\": \"ISI_DENGAN_BASE64_JPEG_DISINI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/capture",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "capture"
+              ]
+            },
+            "description": "Kirim 1 frame wajah (JPEG base64). Panggil berulang (mis. tiap 200 ms) sampai respons `completed: true` — inilah pengumpulan data wajah otomatis tanpa input user.\n\nGanti ISI_DENGAN_BASE64_JPEG_DISINI dengan base64 frame kamera (boleh dengan prefix data:image/jpeg;base64,)."
+          },
+          "response": []
+        },
+        {
+          "name": "Train Model Wajah",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "console.log(j.status, '-', j.message);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/train",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "train"
+              ]
+            },
+            "description": "Training LBPH sinkron memakai sampel user yang login. Label diambil dari tabel Users (NIK + Name). Butuh sampel >= target (400 bila belum cukup)."
+          },
+          "response": []
+        },
+        {
+          "name": "Info Model (Admin only)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/model",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "model"
+              ]
+            },
+            "description": "Login sebagai admin dulu (Auth > Login Admin). 403 bila bukan Admin."
+          },
+          "response": []
+        },
+        {
+          "name": "Retrain Semua Dataset (Admin only)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/retrain",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "retrain"
+              ]
+            },
+            "description": "Training ulang seluruh dataset, tanpa syarat target per user. Dipakai setelah rename/hapus folder dataset atau perubahan nama user."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Sampel Wajah",
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/reset/{{nik_user}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "reset",
+                "{{nik_user}}"
+              ]
+            },
+            "description": "Hapus semua sampel wajah {{nik_user}}. User biasa hanya boleh NIK-nya sendiri (403 bila NIK lain). Setelah reset jalankan Retrain (Admin) agar model ikut bersih."
+          },
+          "response": []
+        },
+        {
+          "name": "Kenali Wajah (publik)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "console.log('recognized:', j.recognized, '| nik:', j.user_id, '| conf:', j.confidence);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image\": \"ISI_DENGAN_BASE64_JPEG_DISINI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/recognize",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "recognize"
+              ]
+            },
+            "description": "Identifikasi wajah pada 1 frame (tanpa login). confidence = LBPH distance, semakin kecil semakin mirip (match bila <= 70)."
+          },
+          "response": []
+        },
+        {
+          "name": "Login Wajah (publik)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.access_token) {",
+                  "    pm.collectionVariables.set('access_token', j.access_token);",
+                  "    console.log('login wajah sukses:', j.user.NIK, '-', j.user.Name);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image\": \"ISI_DENGAN_BASE64_JPEG_DISINI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "login"
+              ]
+            },
+            "description": "Login tanpa password memakai 1 frame wajah. Token disimpan ke access_token seperti login biasa. 401 bila wajah tidak dikenali / model belum dilatih."
+          },
+          "response": []
+        }
+      ]
     }
   ]
 }

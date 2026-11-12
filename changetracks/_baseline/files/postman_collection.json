@@ -1,0 +1,926 @@
+{
+  "info": {
+    "_postman_id": "b7e2f1a0-huawei-ict-backend",
+    "name": "Huawei ICT Backend API",
+    "description": "Koleksi Postman untuk backend FastAPI Huawei ICT.\n\n## Cara pakai\n1. Jalankan server: `py main.py` (port 8000).\n2. Panggil **Auth > Login** (admin atau user) — token otomatis tersimpan ke variabel koleksi `access_token`.\n3. Endpoint berlabel *(Bearer)* otomatis memakai token tersebut.\n\n## Role\n- **R1 Admin**: lihat history semua user, filter `?nik=`, daftar user.\n- **R2 User**: hanya riwayat miliknya sendiri (403 bila akses orang lain).\n\nAkun seed: `admin / admin123`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:8000"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "nik_user",
+      "value": "3201234567890001"
+    },
+    {
+      "key": "pass_user",
+      "value": "rahasia123"
+    },
+    {
+      "key": "id_gejala",
+      "value": ""
+    },
+    {
+      "key": "id_cam",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Meta",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                ""
+              ]
+            },
+            "description": "Cek server hidup."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"NIK\": \"3201234567890001\",\n  \"Name\": \"Bagas Pratama\",\n  \"Tgl_lahir\": \"2003-05-17\",\n  \"Alamat\": \"Jl. Merdeka No. 10, Bandung\",\n  \"id_Role\": \"R2\",\n  \"password\": \"rahasia123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/register",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "register"
+              ]
+            },
+            "description": "Daftar akun baru. id_Role: R1=Admin, R2=User. Respons 201; 409 bila NIK sudah ada."
+          },
+          "response": []
+        },
+        {
+          "name": "Login (User)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "    pm.collectionVariables.set('access_token', json.access_token);",
+                  "    console.log('access_token disimpan otomatis');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"NIK\": \"{{nik_user}}\",\n  \"password\": \"{{pass_user}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login user biasa. Token disimpan otomatis ke variabel `access_token` (script test)."
+          },
+          "response": []
+        },
+        {
+          "name": "Login (Admin)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.access_token) {",
+                  "    pm.collectionVariables.set('access_token', json.access_token);",
+                  "    console.log('access_token ADMIN disimpan otomatis');",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"NIK\": \"admin\",\n  \"password\": \"admin123\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/auth/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "login"
+              ]
+            },
+            "description": "Login admin (seed default). Token disimpan otomatis."
+          },
+          "response": []
+        },
+        {
+          "name": "Me (profil sendiri)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/auth/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "auth",
+                "me"
+              ]
+            },
+            "description": "Profil user yang sedang login (Bearer)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Users",
+      "item": [
+        {
+          "name": "List Users (Admin only)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/users?limit=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "1-200"
+                }
+              ]
+            },
+            "description": "Daftar semua user. Hanya Admin (403 bila user biasa)."
+          },
+          "response": []
+        },
+        {
+          "name": "Profil Saya",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/users/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me"
+              ]
+            },
+            "description": "Profil user yang sedang login."
+          },
+          "response": []
+        },
+        {
+          "name": "Detail User by NIK",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/users/{{nik_user}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "{{nik_user}}"
+              ]
+            },
+            "description": "Detail user. User biasa hanya boleh NIK sendiri (403 selain itu); 404 bila tidak ada."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Gejala",
+      "item": [
+        {
+          "name": "Catat Gejala",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id_gejala) {",
+                  "    pm.collectionVariables.set('id_gejala', json.id_gejala);",
+                  "    console.log('id_gejala disimpan:', json.id_gejala);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Suhu\": 38.2,\n  \"Batuk\": \"kering\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/gejala",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "gejala"
+              ]
+            },
+            "description": "Catat gejala atas NIK yang login. Suhu 30-45. id_gejala disimpan otomatis ke variabel."
+          },
+          "response": []
+        },
+        {
+          "name": "History Gejala (User)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/gejala/history?limit=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "gejala",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "1-200, default 50"
+                },
+                {
+                  "key": "nik",
+                  "value": "",
+                  "disabled": true,
+                  "description": "Khusus Admin: filter NIK"
+                }
+              ]
+            },
+            "description": "Riwayat gejala + kamera + laporan. User: otomatis miliknya sendiri. Admin: semua user (opsional ?nik=)."
+          },
+          "response": []
+        },
+        {
+          "name": "History Gejala (Admin - filter NIK)",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/gejala/history?limit=50&nik={{nik_user}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "gejala",
+                "history"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                },
+                {
+                  "key": "nik",
+                  "value": "{{nik_user}}",
+                  "description": "Lihat riwayat user tertentu"
+                }
+              ]
+            },
+            "description": "Admin melihat riwayat satu user. User biasa yang memaksa ?nik= orang lain mendapat 403."
+          },
+          "response": []
+        },
+        {
+          "name": "Detail Gejala",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/gejala/{{id_gejala}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "gejala",
+                "{{id_gejala}}"
+              ]
+            },
+            "description": "Detail satu gejala (id diambil otomatis dari 'Catat Gejala'). 403 bila bukan milik sendiri (non-admin)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Camera",
+      "item": [
+        {
+          "name": "Catat Camera",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.id_cam) {",
+                  "    pm.collectionVariables.set('id_cam', json.id_cam);",
+                  "    console.log('id_cam disimpan:', json.id_cam);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"Status\": \"terdeteksi mengantuk\",\n  \"id_gejala\": \"{{id_gejala}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/camera",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "camera"
+              ]
+            },
+            "description": "Rekam hasil deteksi kamera untuk gejala. Harus milik sendiri (non-admin). id_cam disimpan otomatis."
+          },
+          "response": []
+        },
+        {
+          "name": "List Camera",
+          "request": {
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "method": "GET",
+            "url": {
+              "raw": "{{base_url}}/api/camera?limit=50",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "camera"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "Daftar rekaman kamera. Admin: semua. User: hanya pada gejala miliknya."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Face Recognition",
+      "item": [
+        {
+          "name": "Status Wajah Saya",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "console.log('progres sampel:', j.my_samples + '/' + j.target,",
+                  "            '| model:', j.model_exists, '| label:', j.model_users);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "status"
+              ]
+            },
+            "description": "Progres sampel wajah user yang login + status model.\n\n- model_users: jumlah label di model\n- total_samples: sampel yang ikut training\n- unlabeled_samples: folder dataset tanpa user terdaftar (dilewati)\n- my_samples / target: progres pengumpulan data wajah Anda"
+          },
+          "response": []
+        },
+        {
+          "name": "Capture Frame Wajah",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "console.log('stored', j.stored + '/' + j.target, '| terdeteksi:', j.face_detected);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image\": \"ISI_DENGAN_BASE64_JPEG_DISINI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/capture",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "capture"
+              ]
+            },
+            "description": "Kirim 1 frame wajah (JPEG base64). Panggil berulang (mis. tiap 200 ms) sampai respons `completed: true` — inilah pengumpulan data wajah otomatis tanpa input user.\n\nGanti ISI_DENGAN_BASE64_JPEG_DISINI dengan base64 frame kamera (boleh dengan prefix data:image/jpeg;base64,)."
+          },
+          "response": []
+        },
+        {
+          "name": "Train Model Wajah",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "console.log(j.status, '-', j.message);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/train",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "train"
+              ]
+            },
+            "description": "Training LBPH sinkron memakai sampel user yang login. Label diambil dari tabel Users (NIK + Name). Butuh sampel >= target (400 bila belum cukup)."
+          },
+          "response": []
+        },
+        {
+          "name": "Info Model (Admin only)",
+          "request": {
+            "method": "GET",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/model",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "model"
+              ]
+            },
+            "description": "Login sebagai admin dulu (Auth > Login Admin). 403 bila bukan Admin."
+          },
+          "response": []
+        },
+        {
+          "name": "Retrain Semua Dataset (Admin only)",
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/retrain",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "retrain"
+              ]
+            },
+            "description": "Training ulang seluruh dataset, tanpa syarat target per user. Dipakai setelah rename/hapus folder dataset atau perubahan nama user."
+          },
+          "response": []
+        },
+        {
+          "name": "Reset Sampel Wajah",
+          "request": {
+            "method": "DELETE",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{access_token}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/reset/{{nik_user}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "reset",
+                "{{nik_user}}"
+              ]
+            },
+            "description": "Hapus semua sampel wajah {{nik_user}}. User biasa hanya boleh NIK-nya sendiri (403 bila NIK lain). Setelah reset jalankan Retrain (Admin) agar model ikut bersih."
+          },
+          "response": []
+        },
+        {
+          "name": "Kenali Wajah (publik)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "console.log('recognized:', j.recognized, '| nik:', j.user_id, '| conf:', j.confidence);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image\": \"ISI_DENGAN_BASE64_JPEG_DISINI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/recognize",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "recognize"
+              ]
+            },
+            "description": "Identifikasi wajah pada 1 frame (tanpa login). confidence = LBPH distance, semakin kecil semakin mirip (match bila <= 70)."
+          },
+          "response": []
+        },
+        {
+          "name": "Login Wajah (publik)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "if (j.access_token) {",
+                  "    pm.collectionVariables.set('access_token', j.access_token);",
+                  "    console.log('login wajah sukses:', j.user.NIK, '-', j.user.Name);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "auth": {
+              "type": "noauth"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"image\": \"ISI_DENGAN_BASE64_JPEG_DISINI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/face/login",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "face",
+                "login"
+              ]
+            },
+            "description": "Login tanpa password memakai 1 frame wajah. Token disimpan ke access_token seperti login biasa. 401 bila wajah tidak dikenali / model belum dilatih."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
