@@ -1,35 +1,41 @@
-
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db.session import Base, SessionLocal, engine
 
-# Import model agar SQLAlchemy mengenali semua tabel
+# IMPORT MODELS
+# Model Gejala, User, dan Role
 from app.models import gejala as models
+
+# Model Sistem Pakar
+# Import ini diperlukan agar SQLAlchemy mengenali
+# seluruh tabel sistem pakar pada Base.metadata.
 from app.models import pakar as pakar_models
 
-# Import seeder sistem pakar
-from app.seeders.pakar_seeder import seed_master_gejala
+# IMPORT SEEDER
+from app.seeders.pakar_seeder import (
+    seed_master_gejala,
+    seed_aturan_pakar,
+)
 
+# IMPORT ROUTERS
 from app.routers import auth, face, gejala, users
+from app.routers import pakar
 
-
+# FASTAPI APPLICATION
 app = FastAPI(
     title=settings.APP_NAME,
     version="1.0.0",
     description=(
-        "Backend FastAPI untuk pencatatan gejala kesehatan dengan deteksi kamera. "
+        "Backend FastAPI untuk pencatatan gejala kesehatan "
+        "dengan deteksi kamera. "
         "Role Admin dapat melihat history seluruh user; "
         "user biasa hanya riwayatnya sendiri."
     ),
 )
 
-
-# ==============================
 # CORS CONFIGURATION
-# ==============================
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -38,21 +44,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
-# ==============================
 # ROUTERS
-# ==============================
+app.include_router(
+    auth.router,
+    prefix=settings.API_PREFIX
+)
 
-app.include_router(auth.router, prefix=settings.API_PREFIX)
-app.include_router(users.router, prefix=settings.API_PREFIX)
-app.include_router(gejala.router, prefix=settings.API_PREFIX)
-app.include_router(face.router, prefix=settings.API_PREFIX)
+app.include_router(
+    users.router,
+    prefix=settings.API_PREFIX
+)
 
+app.include_router(
+    gejala.router,
+    prefix=settings.API_PREFIX
+)
 
-# ==============================
+app.include_router(
+    face.router,
+    prefix=settings.API_PREFIX
+)
+
+app.include_router(
+    pakar.router,
+    prefix=settings.API_PREFIX
+)
+
 # DATABASE INITIALIZATION
-# ==============================
-
 @app.on_event("startup")
 def on_startup() -> None:
     """
@@ -64,6 +82,8 @@ def on_startup() -> None:
     from app.models.gejala import Role, User
 
     # 1. Membuat tabel yang belum tersedia
+    # Seluruh model yang di-import di atas akan
+    # dikenali oleh SQLAlchemy.
     Base.metadata.create_all(bind=engine)
 
     db = SessionLocal()
@@ -106,6 +126,9 @@ def on_startup() -> None:
 
         # 4. Seeder Master Gejala Sistem Pakar
         seed_master_gejala(db)
+        
+        # 5. Seeder Aturan Pakar
+        seed_aturan_pakar(db)
 
     except Exception:
         db.rollback()
@@ -114,11 +137,7 @@ def on_startup() -> None:
     finally:
         db.close()
 
-
-# ==============================
 # ROOT / HEALTH CHECK
-# ==============================
-
 @app.get("/", tags=["Meta"])
 def root():
     """Health check sederhana."""
@@ -129,9 +148,7 @@ def root():
     }
 
 
-# ==============================
 # RUN APPLICATION
-# ==============================
 
 if __name__ == "__main__":
     import uvicorn
