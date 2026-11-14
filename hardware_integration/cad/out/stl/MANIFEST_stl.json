@@ -1,0 +1,123 @@
+[
+  {
+    "file": "01_front_bezel.stl",
+    "mm": [
+      220.0,
+      300.0,
+      6.0
+    ],
+    "volume_cm3": 301.04,
+    "watertight": true,
+    "note": "plat muka, semua cutout tembus + chamfer kamera"
+  },
+  {
+    "file": "02_body_tray.stl",
+    "mm": [
+      220.0,
+      300.0,
+      54.0
+    ],
+    "volume_cm3": 386.49,
+    "watertight": true,
+    "note": "bodi buka muka + boss Orange Pi + ventilasi"
+  },
+  {
+    "file": "03_back_panel.stl",
+    "mm": [
+      220.0,
+      300.0,
+      6.0
+    ],
+    "volume_cm3": 382.48,
+    "watertight": true,
+    "note": "plat belakang terpisah (akrilik/plywood)"
+  },
+  {
+    "file": "10_bracket_camera.stl",
+    "mm": [
+      46.0,
+      46.0,
+      4.0
+    ],
+    "volume_cm3": 6.9,
+    "watertight": true,
+    "note": "bracket modul kamera 46x46, lubang M12 OD16"
+  },
+  {
+    "file": "11_bracket_ir.stl",
+    "mm": [
+      26.0,
+      20.0,
+      4.0
+    ],
+    "volume_cm3": 0.95,
+    "watertight": true,
+    "note": "bracket GY-906, pocket PCB 17.6x11.6x3"
+  },
+  {
+    "file": "12_standoff_lcd_h16.stl",
+    "mm": [
+      16.0,
+      16.0,
+      16.0
+    ],
+    "volume_cm3": 3.07,
+    "watertight": true,
+    "note": "x4"
+  },
+  {
+    "file": "13_standoff_ir_h14.stl",
+    "mm": [
+      14.0,
+      14.0,
+      14.0
+    ],
+    "volume_cm3": 2.07,
+    "watertight": true,
+    "note": "x4"
+  },
+  {
+    "file": "14_corner_bracket.stl",
+    "mm": [
+      30.0,
+      30.0,
+      30.0
+    ],
+    "volume_cm3": 6.57,
+    "watertight": true,
+    "note": "siku penyambung 30x30, x4"
+  },
+  {
+    "file": "15_foot.stl",
+    "mm": [
+      60.0,
+      40.0,
+      8.0
+    ],
+    "volume_cm3": 14.97,
+    "watertight": true,
+    "note": "kaki 60x40, x2"
+  },
+  {
+    "file": "16_boss_tripod.stl",
+    "mm": [
+      24.0,
+      24.0,
+      12.0
+    ],
+    "volume_cm3": 4.79,
+    "watertight": true,
+    "note": "boss mur 1/4in-20 (mounting tripod)"
+  },
+  {
+    "file": "00_assembly_front_body.stl",
+    "mm": [
+      220.0,
+      300.0,
+      60.0
+    ],
+    "volume_cm3": 687.53,
+    "watertight": true,
+    "note": "tampilan rakitan: plat muka + bodi"
+  }
+]

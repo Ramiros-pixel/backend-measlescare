@@ -1,0 +1,15 @@
+# Dependensi generator CAD (hardware_integration/cad)
+# Hanya dipakai untuk MEMBUAT berkas desain. Backend-tidak terpengaruh.
+# Pasang di venv terpisah supaya tidak mengotori venv backend:
+#
+#   python3 -m venv ~/.hermes/cad-venv
+#   ~/.hermes/cad-venv/bin/pip install -r hardware_integration/cad/requirements-cad.txt
+#
+# gen2d.py (SVG/DXF) TIDAK butuh dependensi apa pun - cukup Python 3 standar.
+# gen3d.py (STL)     butuh baris di bawah ini.
+
+numpy>=1.24
+scipy>=1.10          # dipakai trimesh untuk analisis jaring (fix_normals/body_count)
+trimesh>=4.0
+manifold3d>=2.3      # mesin CSG boolean yang cepat & rapi (union/difference)
+shapely>=2.0         # opsional: validasi poligon 2D
