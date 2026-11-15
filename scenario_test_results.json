@@ -1,0 +1,99 @@
+{
+    "total": 7,
+    "passed": 7,
+    "failed": 0,
+    "pass_rate": 100.0,
+    "results": [
+        {
+            "id": "TC01",
+            "nama": "Clinical + Suspected Pattern - Batuk",
+            "id_gejala": "66c78fcb34ea466a990f",
+            "expected_main": "S003",
+            "actual_main": "S003",
+            "expected_safety": "S014",
+            "actual_safety": "S014",
+            "expected_alert": false,
+            "actual_alert": false,
+            "database": true,
+            "status": "PASS"
+        },
+        {
+            "id": "TC02",
+            "nama": "Clinical + Suspected Pattern - Pilek",
+            "id_gejala": "b216032a06b047a0a3bd",
+            "expected_main": "S004",
+            "actual_main": "S004",
+            "expected_safety": "S014",
+            "actual_safety": "S014",
+            "expected_alert": false,
+            "actual_alert": false,
+            "database": true,
+            "status": "PASS"
+        },
+        {
+            "id": "TC03",
+            "nama": "Clinical Pattern - Batuk",
+            "id_gejala": "c5fd21c1597347c48d83",
+            "expected_main": "S007",
+            "actual_main": "S007",
+            "expected_safety": "S014",
+            "actual_safety": "S014",
+            "expected_alert": false,
+            "actual_alert": false,
+            "database": true,
+            "status": "PASS"
+        },
+        {
+            "id": "TC04",
+            "nama": "Clinical Pattern Tidak Terpenuhi",
+            "id_gejala": "de44c0e3344d4e9e8164",
+            "expected_main": "S010",
+            "actual_main": "S010",
+            "expected_safety": "S014",
+            "actual_safety": "S014",
+            "expected_alert": false,
+            "actual_alert": false,
+            "database": true,
+            "status": "PASS"
+        },
+        {
+            "id": "TC05",
+            "nama": "Safety Alert - Sesak Napas",
+            "id_gejala": "205d3f4818ec49c396eb",
+            "expected_main": "S003",
+            "actual_main": "S003",
+            "expected_safety": "S011",
+            "actual_safety": "S011",
+            "expected_alert": true,
+            "actual_alert": true,
+            "database": true,
+            "status": "PASS"
+        },
+        {
+            "id": "TC06",
+            "nama": "Safety Alert - Kejang",
+            "id_gejala": "e3a684cd8b644966b63c",
+            "expected_main": "S003",
+            "actual_main": "S003",
+            "expected_safety": "S012",
+            "actual_safety": "S012",
+            "expected_alert": true,
+            "actual_alert": true,
+            "database": true,
+            "status": "PASS"
+        },
+        {
+            "id": "TC07",
+            "nama": "Safety Alert - Penurunan Kesadaran",
+            "id_gejala": "0eecb75a789242188202",
+            "expected_main": "S003",
+            "actual_main": "S003",
+            "expected_safety": "S013",
+            "actual_safety": "S013",
+            "expected_alert": true,
+            "actual_alert": true,
+            "database": true,
+            "status": "PASS"
+        }
+    ]
+}
