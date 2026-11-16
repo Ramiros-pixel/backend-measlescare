@@ -19,7 +19,9 @@ class LoginRequest(BaseModel):
 class UserBase(BaseModel):
     NIK: str = Field(min_length=16, max_length=16, examples=["3201234567890001"])
     Name: str = Field(min_length=1, max_length=100, examples=["Bagas Pratama"])
-    Tgl_lahir: date
+    Tempat_Tgl_Lahir: str | None = Field(default=None, max_length=150)
+    Golongan_darah: str | None = Field(default=None, pattern="^(A|B|AB|O)$")
+    Email: str | None = Field(default=None, max_length=255)
     Alamat: str | None = None
     id_Role: str = Field(min_length=1, max_length=10, examples=["R2"])
 
@@ -33,7 +35,9 @@ class UserOut(BaseModel):
 
     NIK: str
     Name: str
-    Tgl_lahir: date
+    Tempat_Tgl_Lahir: str | None = None
+    Golongan_darah: str | None = None
+    Email: str | None = None
     Alamat: str | None
     id_Role: str
     role_name: str | None = None

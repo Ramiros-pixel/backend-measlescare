@@ -1,6 +1,24 @@
+
+# Environment
 .venv/
 .env
+.env.*
+!.env.example
+
+# Python cache
 __pycache__/
+*.py[cod]
 *.pyc
-# changetracks: lacak isi; jangan lacak cadangan biner besar / output tool
-changetracks/**/__pycache__/
+
+# Dataset wajah dan data biometrik
+process-recognition/dataset/
+
+# Model hasil training
+process-recognition/*.yml
+process-recognition/*.yaml
+process-recognition/*.onnx
+
+# Cache dan file sementara
+.vscode/
+.pytest_cache/
+.mypy_cache/

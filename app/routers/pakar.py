@@ -1,12 +1,13 @@
 
 import json
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy import delete, select
 
-from app.core.security import CurrentUser, DbSession, is_admin
+from app.core.security import DbSession, get_current_user, is_admin
 
-from app.models.gejala import Gejala
+from app.models.gejala import Gejala, User
+from app.routers.kiosk_session import _session_from_token
 from app.models.pakar import (
     MasterGejala,
     JawabanGejala,
@@ -20,6 +21,34 @@ from app.expert_system.decision_tree import run_decision_tree
 
 
 router = APIRouter(tags=["Sistem Pakar"])
+
+
+def _resolve_pakar_user(
+    db,
+    authorization: str | None,
+    kiosk_session_token: str | None,
+) -> User:
+    """Terima JWT user/admin atau token sesi kiosk yang valid."""
+    if kiosk_session_token:
+        _session, nik = _session_from_token(db, kiosk_session_token)
+        user = db.get(User, nik)
+        if user is None:
+            raise HTTPException(status_code=401, detail="Pasien sesi tidak ditemukan")
+        return user
+
+    if authorization and authorization.lower().startswith("bearer "):
+        return get_current_user(authorization.split(" ", 1)[1].strip(), db)
+
+    raise HTTPException(status_code=401, detail="Autentikasi diperlukan")
+
+
+def get_pakar_user(
+    db: DbSession,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+    kiosk_session_token: str | None = Header(default=None, alias="X-Kiosk-Session"),
+) -> User:
+    return _resolve_pakar_user(db, authorization, kiosk_session_token)
+
 
 
 # KONFIGURASI FAKTA WAJIB
@@ -42,7 +71,7 @@ REQUIRED_FACTS = {
 @router.get("/pakar/master-gejala")
 def get_master_gejala(
     db: DbSession,
-    user: CurrentUser,
+    user: User = Depends(get_pakar_user),
 ):
     """
     Mengambil daftar gejala aktif untuk ditampilkan
@@ -76,7 +105,7 @@ def get_master_gejala(
 def evaluasi_pakar(
     payload: EvaluasiPakarRequest,
     db: DbSession,
-    user: CurrentUser,
+    user: User = Depends(get_pakar_user),
 ):
     """
     Menjalankan Forward Chaining dan Decision Tree
@@ -335,7 +364,7 @@ def evaluasi_pakar(
 def get_hasil_pakar(
     id_gejala: str,
     db: DbSession,
-    user: CurrentUser,
+    user: User = Depends(get_pakar_user),
 ):
     """
     Mengambil hasil evaluasi sistem pakar

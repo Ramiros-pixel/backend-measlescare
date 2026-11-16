@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.config import settings
 from app.db.session import Base, SessionLocal, engine
+from app.db.migrations import migrate_database
 
 # IMPORT MODELS
 # Model Gejala, User, dan Role
@@ -20,7 +21,7 @@ from app.seeders.pakar_seeder import (
 )
 
 # IMPORT ROUTERS
-from app.routers import auth, face, gejala, users
+from app.routers import auth, face, gejala, users, kiosk, kiosk_session
 from app.routers import pakar
 from app.routers import measles
 
@@ -72,6 +73,16 @@ app.include_router(
 )
 
 app.include_router(
+    kiosk.router,
+    prefix=settings.API_PREFIX
+)
+
+app.include_router(
+    kiosk_session.router,
+    prefix=settings.API_PREFIX
+)
+
+app.include_router(
     measles.router,
     prefix=settings.API_PREFIX
 )
@@ -88,9 +99,10 @@ def on_startup() -> None:
     from app.models.gejala import Role, User
 
     # 1. Membuat tabel yang belum tersedia
-    # Seluruh model yang di-import di atas akan
-    # dikenali oleh SQLAlchemy.
     Base.metadata.create_all(bind=engine)
+
+    # 2. Memeriksa dan menambahkan kolom database yang belum tersedia
+    migrate_database()
 
     db = SessionLocal()
 
@@ -116,7 +128,9 @@ def on_startup() -> None:
                 User(
                     NIK="admin",
                     Name="Administrator",
-                    Tgl_lahir="2000-01-01",
+                    Tempat_Tgl_Lahir="-",
+                    Golongan_darah=None,
+                    Email=None,
                     Alamat="-",
                     password=hash_password("admin123"),
                     id_Role="R1",
