@@ -1,0 +1,147 @@
+"""
+Router API untuk modul inferensi MeaslesWatch AI
+Huawei ICT Competition 2026–2027 | Innovation Track
+Team: Inovexa
+
+Endpoint:
+  POST /v1/measles/predict : Klasifikasi ruam kulit (6 kelas) dari upload gambar multipart/form-data.
+"""
+
+from __future__ import annotations
+
+import logging
+from typing import Any
+
+from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi.concurrency import run_in_threadpool
+
+from app.schemas.measles import MeaslesPredictResponse
+from app.services.measles_engine import (
+    InferenceRuntimeError,
+    InvalidImageError,
+    ModelLoadError,
+    get_measles_engine,
+)
+
+logger = logging.getLogger(__name__)
+
+# Prefix /api tidak ditulis langsung di sini karena dikelola oleh settings.API_PREFIX saat registrasi router
+router = APIRouter(prefix="/v1/measles", tags=["MeaslesWatch AI"])
+
+# Batas maksimum ukuran file: 10 MB (10 * 1024 * 1024 byte)
+MAX_FILE_SIZE: int = 10 * 1024 * 1024
+CHUNK_SIZE: int = 1024 * 1024  # 1 MB chunk untuk pembacaan terbatas
+
+API_DISCLAIMER: str = (
+    "Hasil analisis citra merupakan estimasi AI untuk skrining awal, bukan diagnosis medis definitif. "
+    "Pengguna disarankan tetap berkonsultasi dengan tenaga medis profesional."
+)
+
+
+def _validate_image_format(data: bytes) -> None:
+    """
+    Memvalidasi format berkas berdasarkan magic bytes (isi aktual), bukan sekadar ekstensi atau MIME type.
+    Mendukung JPEG, PNG, dan WebP.
+    
+    Raises:
+        HTTPException: HTTP 415 jika magic bytes tidak sesuai format yang didukung.
+    """
+    if len(data) < 12:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Format berkas tidak didukung. Harap unggah citra dengan format JPEG, PNG, atau WebP.",
+        )
+
+    is_jpeg = data.startswith(b"\xff\xd8\xff")
+    is_png = data.startswith(b"\x89PNG\r\n\x1a\n")
+    is_webp = data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+
+    if not (is_jpeg or is_png or is_webp):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Format berkas tidak didukung. Harap unggah citra dengan format JPEG, PNG, atau WebP.",
+        )
+
+
+@router.post(
+    "/predict",
+    response_model=MeaslesPredictResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Prediksi klasifikasi ruam kulit MeaslesWatch AI",
+    description=(
+        "Menerima unggahan citra ruam kulit dalam format JPEG, PNG, atau WebP (maksimal 10 MB). "
+        "Mengembalikan estimasi probabilitas untuk 6 kelas klasifikasi penyakit menggunakan model MobileNetV3 Small."
+    ),
+)
+async def predict_measles(
+    file: UploadFile = File(
+        ...,
+        description="Berkas citra ruam kulit yang akan dianalisis (maks 10 MB, format JPEG, PNG, atau WebP)."
+    ),
+) -> MeaslesPredictResponse:
+    """
+    Endpoint inferensi klasifikasi ruam kulit.
+    
+    Tanggung jawab router (thin router):
+    1. Membaca stream berkas secara terbatas (bounded reading) hingga maks 10 MB.
+    2. Memvalidasi konten non-kosong dan signature format biner (JPEG/PNG/WebP).
+    3. Meneruskan byte gambar ke threadpool untuk dieksekusi oleh MeaslesEngine.
+    4. Mengembalikan struktur data sesuai MeaslesPredictResponse schema.
+    """
+    # 1. Bounded streaming read untuk mencegah memory exhaustion
+    content = bytearray()
+    while True:
+        chunk = await file.read(CHUNK_SIZE)
+        if not chunk:
+            break
+        content.extend(chunk)
+        if len(content) > MAX_FILE_SIZE:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="Ukuran berkas melebihi batas maksimum 10 MB.",
+            )
+
+    image_bytes = bytes(content)
+
+    # 2. Validasi file kosong
+    if len(image_bytes) == 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Berkas gambar kosong (0 byte).",
+        )
+
+    # 3. Validasi magic bytes (format isi aktual)
+    _validate_image_format(image_bytes)
+
+    # 4. Panggil inference engine melalui thread pool agar tidak memblokir event loop
+    try:
+        engine = get_measles_engine()
+        result = await run_in_threadpool(engine.predict_bytes, image_bytes)
+    except InvalidImageError as e:
+        logger.warning(f"Gagal mendekode citra yang diunggah: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Berkas citra rusak atau tidak dapat didekode.",
+        ) from e
+    except ModelLoadError as e:
+        logger.error(f"Model atau sesi inferensi tidak tersedia: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Layanan inferensi AI saat ini tidak tersedia.",
+        ) from e
+    except InferenceRuntimeError as e:
+        logger.error(f"Kegagalan runtime inferensi model: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Terjadi kesalahan saat memproses inferensi citra.",
+        ) from e
+    except Exception as e:
+        logger.exception(f"Kesalahan tidak terduga pada endpoint inferensi: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Terjadi kesalahan internal pada server.",
+        ) from e
+
+    # 5. Pasang disclaimer resmi API dan return validated Pydantic schema
+    result["disclaimer"] = API_DISCLAIMER
+    return MeaslesPredictResponse(**result)

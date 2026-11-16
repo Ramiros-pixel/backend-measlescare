@@ -1,7 +1,7 @@
 {
   "project": "backend-measlescare",
   "convention": "1 folder per file; subfolder per prompt",
-  "updated_at": "2026-11-12T22:14:11+07:00",
+  "updated_at": "2026-11-16T00:33:49+07:00",
   "tracks": [
     {
       "file": "AGENTS.md",
@@ -9,6 +9,69 @@
       "summary": "buat-agents-md-inisialisasi-agent",
       "prompt": "Buat AGENTS.md — berkas inisialisasi agent AI untuk proyek MeaslesCare (peran, ruang lingkup backend-only, aturan backend, struktur proyek, keamanan & privasi data kesehatan, konvensi kode, cara kerja, mode inovasi, larangan) + konvensi changetracks.",
       "at": "2026-11-12T22:14:11+07:00"
+    },
+    {
+      "file": "requirements.txt",
+      "folder": "requirements.txt\\001_2026-11-15_tambah-dependensi-onnxruntime",
+      "summary": "tambah-dependensi-onnxruntime",
+      "prompt": "PHASE 1: ENVIRONMENT & MODEL PREPARATION - Menambahkan dependensi onnxruntime>=1.18.0,<2.0 untuk MeaslesWatch AI ONNX inference engine.",
+      "at": "2026-11-15T23:44:31+07:00"
+    },
+    {
+      "file": "app/services/measles_engine.py",
+      "folder": "app__services__measles_engine.py\\001_2026-11-15_implementasi-measles-engine-service",
+      "summary": "implementasi-measles-engine-service",
+      "prompt": "PHASE 2: PREPROCESSING PIPELINE & INFERENCE ENGINE - Implementasi service inferensi ONNX MeaslesWatch AI (MobileNetV3 Small) dengan pra-pemrosesan citra deterministik dan manajemen siklus hidup singleton thread-safe.",
+      "at": "2026-11-15T23:55:32+07:00"
+    },
+    {
+      "file": "tests/test_measles_engine.py",
+      "folder": "tests__test_measles_engine.py\\001_2026-11-15_unit-tests-measles-engine",
+      "summary": "unit-tests-measles-engine",
+      "prompt": "PHASE 2: PREPROCESSING PIPELINE & INFERENCE ENGINE - Pembuatan 12 unit test otomatis untuk memvalidasi model loading, decoding, pra-pemrosesan citra, softmax, dan penanganan kesalahan runtime.",
+      "at": "2026-11-15T23:55:32+07:00"
+    },
+    {
+      "file": "app/schemas/measles.py",
+      "folder": "app__schemas__measles.py\\001_2026-11-16_skema-pydantic-measles-predict",
+      "summary": "skema-pydantic-measles-predict",
+      "prompt": "PROMPT 23 — PHASE 3: FASTAPI INFERENCE API DEVELOPMENT - Pembuatan Pydantic schema (MeaslesClassEnum, MeaslesProbabilities, MeaslesPredictResponse) untuk endpoint klasifikasi ruam kulit.",
+      "at": "2026-11-16T00:14:37+07:00"
+    },
+    {
+      "file": "app/routers/measles.py",
+      "folder": "app__routers__measles.py\\001_2026-11-16_router-measles-predict-endpoint",
+      "summary": "router-measles-predict-endpoint",
+      "prompt": "PROMPT 23 — PHASE 3: FASTAPI INFERENCE API DEVELOPMENT - Implementasi thin router POST /v1/measles/predict dengan validasi batas 10 MB, validasi magic bytes (JPEG/PNG/WebP), delegasi threadpool, dan pemetaan HTTP status error.",
+      "at": "2026-11-16T00:14:37+07:00"
+    },
+    {
+      "file": "tests/test_measles_router.py",
+      "folder": "tests__test_measles_router.py\\001_2026-11-16_unit-tests-measles-router",
+      "summary": "unit-tests-measles-router",
+      "prompt": "PROMPT 23 — PHASE 3: FASTAPI INFERENCE API DEVELOPMENT - Implementasi 10 unit dan integration test otomatis untuk memvalidasi router, skema, penolakan file kosong, oversized file, format tidak didukung, citra rusak, kegagalan model, dan isolasi modul.",
+      "at": "2026-11-16T00:14:37+07:00"
+    },
+    {
+      "file": "tests/test_http_client.py",
+      "folder": "tests__test_http_client.py\\001_2026-11-16_http-integration-tests-testclient",
+      "summary": "http-integration-tests-testclient",
+      "prompt": "PROMPT 25 — PHASE 3.6: POST-INSTALLATION DEPENDENCY & HTTP VERIFICATION - Pembuatan suite pengujian integrasi HTTP nyata via FastAPI TestClient setelah python-multipart==0.0.32 terpasang.",
+      "at": "2026-11-16T00:27:24+07:00"
+    },
+    {
+      "file": "app/main.py",
+      "folder": "app__main.py\\001_2026-11-16_registrasi-router-measles-app-main",
+      "summary": "registrasi-router-measles-app-main",
+      "prompt": "PROMPT 26 — PHASE 4: MAIN APPLICATION INTEGRATION & END-TO-END VERIFICATION - Registrasi router measles (from app.routers import measles; app.include_router(measles.router, prefix=settings.API_PREFIX)) ke dalam aplikasi FastAPI utama.",
+      "at": "2026-11-16T00:33:49+07:00"
+    },
+    {
+      "file": "tests/test_e2e_integration.py",
+      "folder": "tests__test_e2e_integration.py\\001_2026-11-16_e2e-integration-tests-app-main",
+      "summary": "e2e-integration-tests-app-main",
+      "prompt": "PROMPT 26 — PHASE 4: MAIN APPLICATION INTEGRATION & END-TO-END VERIFICATION - Implementasi 16 skenario pengujian End-to-End pada app.main (Startup, Rute, HTTP Inference riil, Negative Testing 400/413/415/422/500/503, Regresi Rute Lama, dan Akses Publik tanpa JWT).",
+      "at": "2026-11-16T00:33:49+07:00"
     }
   ]
 }

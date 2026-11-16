@@ -1,0 +1,320 @@
+"""
+Unit and integration tests for MeaslesWatch AI FastAPI router and endpoints.
+Project: MeaslesWatch AI — Huawei ICT Competition 2026–2027
+Team: Inovexa
+
+Pengujian mencakup:
+1. Endpoint berhasil menerima gambar valid (PNG, JPEG, WebP).
+2. Respons memuat seluruh field sesuai schema MeaslesPredictResponse.
+3. Prediksi hanya berasal dari 6 kelas yang ditentukan.
+4. File kosong ditolak dengan HTTP 400.
+5. File lebih dari 10 MB ditolak dengan HTTP 413.
+6. Format tidak didukung ditolak dengan HTTP 415.
+7. Gambar rusak ditolak dengan HTTP 422.
+8. Kegagalan model (ModelLoadError / InferenceRuntimeError) ditangani aman (HTTP 503 / 500).
+9. Router tidak menjalankan preprocessing sendiri (mendelegasikan ke engine).
+10. Isolasi penuh: tidak ada interaksi dengan database atau face recognition.
+"""
+
+from __future__ import annotations
+
+import io
+import sys
+import types
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+# Ensure backend root is on sys.path
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+# Mock multipart jika belum terinstal pada environment Python aktif,
+# agar impor router tidak terblokir oleh FastAPI multipart checker.
+if "multipart" not in sys.modules:
+    mock_multipart = types.ModuleType("multipart")
+    mock_multipart.__version__ = "0.0.32"
+    mock_sub = types.ModuleType("multipart.multipart")
+    mock_sub.parse_options_header = lambda x: (x, {})
+    mock_multipart.multipart = mock_sub
+    sys.modules["multipart"] = mock_multipart
+    sys.modules["multipart.multipart"] = mock_sub
+
+import cv2
+import numpy as np
+from fastapi import HTTPException
+from starlette.datastructures import UploadFile
+
+from app.routers.measles import (
+    MAX_FILE_SIZE,
+    predict_measles,
+    router,
+)
+from app.schemas.measles import (
+    MeaslesClassEnum,
+    MeaslesPredictResponse,
+    MeaslesProbabilities,
+)
+from app.services.measles_engine import (
+    CLASS_NAMES,
+    InferenceRuntimeError,
+    InvalidImageError,
+    ModelLoadError,
+)
+
+
+class TestMeaslesRouter(unittest.IsolatedAsyncioTestCase):
+    """Test suite untuk FastAPI router MeaslesWatch AI."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Siapkan sample citra valid untuk PNG, JPEG, dan WebP."""
+        # 1. Synthetic image array (100x100 BGR)
+        img = np.zeros((100, 100, 3), dtype=np.uint8)
+        img[:, :, 0] = 30
+        img[:, :, 1] = 80
+        img[:, :, 2] = 200
+
+        # 2. Valid PNG bytes
+        _, buf_png = cv2.imencode(".png", img)
+        cls.valid_png = buf_png.tobytes()
+
+        # 3. Valid JPEG bytes
+        _, buf_jpg = cv2.imencode(".jpg", img)
+        cls.valid_jpg = buf_jpg.tobytes()
+
+        # 4. Valid WebP bytes
+        _, buf_webp = cv2.imencode(".webp", img)
+        cls.valid_webp = buf_webp.tobytes()
+
+    # -------------------------------------------------------------------------
+    # TEST 1: Penerimaan Gambar Valid
+    # -------------------------------------------------------------------------
+    async def test_01_endpoint_accepts_valid_images(self):
+        """1. Endpoint berhasil menerima gambar valid format PNG, JPEG, dan WebP."""
+        for fmt_name, img_bytes in [("PNG", self.valid_png), ("JPEG", self.valid_jpg), ("WebP", self.valid_webp)]:
+            upload = UploadFile(file=io.BytesIO(img_bytes), filename=f"sample.{fmt_name.lower()}")
+            response = await predict_measles(upload)
+            self.assertIsInstance(
+                response,
+                MeaslesPredictResponse,
+                f"Respons bukan instansi MeaslesPredictResponse untuk format {fmt_name}",
+            )
+            self.assertIn(
+                response.prediction.value,
+                CLASS_NAMES,
+                f"Prediksi tidak valid untuk format {fmt_name}",
+            )
+
+    # -------------------------------------------------------------------------
+    # TEST 2: Validasi Seluruh Field Response Schema
+    # -------------------------------------------------------------------------
+    async def test_02_response_contains_all_schema_fields(self):
+        """2. Respons memuat seluruh field wajib sesuai Pydantic schema."""
+        upload = UploadFile(file=io.BytesIO(self.valid_png), filename="sample.png")
+        response = await predict_measles(upload)
+
+        resp_dict = response.model_dump()
+        required_fields = [
+            "prediction",
+            "class_index",
+            "confidence",
+            "probabilities",
+            "inference_time_ms",
+            "disclaimer",
+        ]
+        for field in required_fields:
+            self.assertIn(field, resp_dict, f"Field '{field}' tidak ada dalam response dict.")
+
+        # Validasi struktur probabilities
+        probs = resp_dict["probabilities"]
+        self.assertEqual(len(probs), 6)
+        for c in CLASS_NAMES:
+            self.assertIn(c, probs)
+            self.assertGreaterEqual(probs[c], 0.0)
+            self.assertLessEqual(probs[c], 1.0)
+
+        # Validasi disclaimer
+        self.assertIn("skrining", response.disclaimer.lower())
+        self.assertIn("diagnosis", response.disclaimer.lower())
+
+    # -------------------------------------------------------------------------
+    # TEST 3: Prediksi Terbatas pada 6 Kelas
+    # -------------------------------------------------------------------------
+    async def test_03_prediction_strictly_from_six_classes(self):
+        """3. Prediksi hanya berasal dari 6 kelas yang ditentukan secara strictly typed."""
+        upload = UploadFile(file=io.BytesIO(self.valid_png), filename="sample.png")
+        response = await predict_measles(upload)
+
+        self.assertIsInstance(response.prediction, MeaslesClassEnum)
+        self.assertIn(response.prediction.value, [
+            "Chickenpox", "Cowpox", "HFMD", "Healthy", "Measles", "Monkeypox"
+        ])
+        self.assertGreaterEqual(response.class_index, 0)
+        self.assertLessEqual(response.class_index, 5)
+
+    # -------------------------------------------------------------------------
+    # TEST 4: Penolakan File Kosong (HTTP 400)
+    # -------------------------------------------------------------------------
+    async def test_04_empty_file_rejected_with_400(self):
+        """4. File kosong (0 byte) ditolak dengan status HTTP 400 Bad Request."""
+        upload = UploadFile(file=io.BytesIO(b""), filename="empty.jpg")
+        with self.assertRaises(HTTPException) as ctx:
+            await predict_measles(upload)
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        self.assertIn("kosong", ctx.exception.detail.lower())
+
+    # -------------------------------------------------------------------------
+    # TEST 5: Penolakan File > 10 MB (HTTP 413)
+    # -------------------------------------------------------------------------
+    async def test_05_oversized_file_rejected_with_413(self):
+        """5. File lebih besar dari 10 MB ditolak dengan HTTP 413 secara bounded reading."""
+        class MockStreamingOversized(io.RawIOBase):
+            """Simulasi file stream besar tanpa mengalokasikan 10 MB ke memori fisik."""
+            def __init__(self, total_bytes: int):
+                self.total_bytes = total_bytes
+                self.read_bytes = 0
+
+            def readinto(self, b):
+                rem = self.total_bytes - self.read_bytes
+                if rem <= 0:
+                    return 0
+                to_read = min(len(b), rem)
+                b[:to_read] = b"\x00" * to_read
+                self.read_bytes += to_read
+                return to_read
+
+            def readable(self):
+                return True
+
+        oversized_stream = io.BufferedReader(MockStreamingOversized(MAX_FILE_SIZE + 1024))
+        upload = UploadFile(file=oversized_stream, filename="giant.png")
+
+        with self.assertRaises(HTTPException) as ctx:
+            await predict_measles(upload)
+
+        self.assertEqual(ctx.exception.status_code, 413)
+        self.assertIn("10 mb", ctx.exception.detail.lower())
+
+    # -------------------------------------------------------------------------
+    # TEST 6: Format Tidak Didukung (HTTP 415)
+    # -------------------------------------------------------------------------
+    async def test_06_unsupported_format_rejected_with_415(self):
+        """6. Format selain JPEG, PNG, dan WebP ditolak berdasarkan validasi magic bytes."""
+        invalid_payloads = [
+            (b"GIF89a\x01\x00\x01\x00\x80\x00\x00", "sample.gif"),
+            (b"%PDF-1.4\n%...\x00\x00", "document.pdf"),
+            (b"PLAIN_TEXT_NOT_IMAGE_DATA_1234567890", "notes.txt"),
+            (b"\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00", "zeros.bin"),
+        ]
+
+        for payload, fname in invalid_payloads:
+            upload = UploadFile(file=io.BytesIO(payload), filename=fname)
+            with self.assertRaises(HTTPException) as ctx:
+                await predict_measles(upload)
+
+            self.assertEqual(
+                ctx.exception.status_code,
+                415,
+                f"Payload {fname} tidak menghasilkan HTTP 415, didapatkan: {ctx.exception.status_code}",
+            )
+            self.assertIn("tidak didukung", ctx.exception.detail.lower())
+
+    # -------------------------------------------------------------------------
+    # TEST 7: Gambar Rusak / Gagal Decode (HTTP 422)
+    # -------------------------------------------------------------------------
+    async def test_07_corrupted_image_rejected_with_422(self):
+        """7. Gambar dengan magic bytes valid namun data korup melempar HTTP 422."""
+        # Magic bytes PNG diikuti data rusak
+        corrupted_png = b"\x89PNG\r\n\x1a\n" + b"THIS_IS_CORRUPTED_PAYLOAD_1234567890"
+        upload = UploadFile(file=io.BytesIO(corrupted_png), filename="corrupt.png")
+
+        with self.assertRaises(HTTPException) as ctx:
+            await predict_measles(upload)
+
+        self.assertEqual(ctx.exception.status_code, 422)
+        self.assertIn("rusak", ctx.exception.detail.lower())
+
+    # -------------------------------------------------------------------------
+    # TEST 8: Penanganan Kegagalan Model Secara Aman
+    # -------------------------------------------------------------------------
+    async def test_08_model_failures_handled_safely(self):
+        """8. ModelLoadError -> HTTP 503, InferenceRuntimeError -> HTTP 500 tanpa bocor traceback."""
+        # A. ModelLoadError -> HTTP 503
+        upload_1 = UploadFile(file=io.BytesIO(self.valid_png), filename="test.png")
+        with patch("app.routers.measles.get_measles_engine") as mock_eng:
+            mock_eng.return_value.predict_bytes.side_effect = ModelLoadError("Model weights missing from disk")
+            with self.assertRaises(HTTPException) as ctx_503:
+                await predict_measles(upload_1)
+
+            self.assertEqual(ctx_503.exception.status_code, 503)
+            self.assertIn("tidak tersedia", ctx_503.exception.detail.lower())
+            self.assertNotIn("weights missing", ctx_503.exception.detail.lower())  # Tidak membocorkan path/detail internal
+
+        # B. InferenceRuntimeError -> HTTP 500
+        upload_2 = UploadFile(file=io.BytesIO(self.valid_png), filename="test.png")
+        with patch("app.routers.measles.get_measles_engine") as mock_eng:
+            mock_eng.return_value.predict_bytes.side_effect = InferenceRuntimeError("ORT tensor runtime failure")
+            with self.assertRaises(HTTPException) as ctx_500:
+                await predict_measles(upload_2)
+
+            self.assertEqual(ctx_500.exception.status_code, 500)
+            self.assertIn("kesalahan", ctx_500.exception.detail.lower())
+            self.assertNotIn("tensor runtime failure", ctx_500.exception.detail.lower())
+
+    # -------------------------------------------------------------------------
+    # TEST 9: Router Tidak Melakukan Preprocessing Sendiri
+    # -------------------------------------------------------------------------
+    async def test_09_router_delegates_preprocessing_to_engine(self):
+        """9. Router mematuhi prinsip thin router dan mendelegasikan pemrosesan ke engine."""
+        mock_result = {
+            "prediction": "Measles",
+            "class_index": 4,
+            "confidence": 0.985,
+            "probabilities": {
+                "Chickenpox": 0.001,
+                "Cowpox": 0.001,
+                "HFMD": 0.001,
+                "Healthy": 0.001,
+                "Measles": 0.985,
+                "Monkeypox": 0.011,
+            },
+            "inference_time_ms": 4.12,
+            "disclaimer": "Hasil skrining AI.",
+        }
+
+        upload = UploadFile(file=io.BytesIO(self.valid_png), filename="test.png")
+        with patch("app.routers.measles.get_measles_engine") as mock_eng:
+            mock_instance = MagicMock()
+            mock_instance.predict_bytes.return_value = mock_result
+            mock_eng.return_value = mock_instance
+
+            response = await predict_measles(upload)
+
+            # Pastikan engine.predict_bytes dipanggil tepat 1 kali dengan raw bytes
+            mock_instance.predict_bytes.assert_called_once_with(self.valid_png)
+            self.assertEqual(response.prediction.value, "Measles")
+
+    # -------------------------------------------------------------------------
+    # TEST 10: Isolasi Penuh dari Face Recognition dan Database
+    # -------------------------------------------------------------------------
+    def test_10_isolation_from_database_and_face_recognition(self):
+        """10. Router tidak mengimpor atau menggunakan modul face recognition dan database."""
+        import app.routers.measles as measles_module
+
+        # Periksa atribut dan modul yang diimpor
+        forbidden_terms = ["face_engine", "face", "Session", "SessionLocal", "Base", "User", "Gejala", "Pakar"]
+        module_dict = dir(measles_module)
+
+        for term in forbidden_terms:
+            self.assertNotIn(
+                term,
+                module_dict,
+                f"Modul router mengimpor komponen terlarang '{term}'. Isolasi terlanggar!",
+            )
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

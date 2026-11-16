@@ -1,0 +1,321 @@
+"""
+End-to-End Integration and Regression Test Suite for MeaslesWatch AI in Main Application.
+Project: MeaslesWatch AI — Huawei ICT Competition 2026–2027
+Team: Inovexa
+
+Menguji aplikasi FastAPI aktual (app dari app.main):
+- Test A: Application startup, imports, dan route registration.
+- Test B: Route path verification (/api/v1/measles/predict) dan integritas rute lama.
+- Test C: HTTP inference riil (PNG, JPEG, WebP, dan sampel klinis dataset MSID_measles11.png).
+- Test D: Negative testing (HTTP 400, 413, 415, 422, 500, 503).
+- Test E: Existing endpoint regression (Root GET /, OpenAPI GET /openapi.json, Docs GET /docs).
+- Test F: Authentication verification (Akses publik tanpa JWT Bearer token).
+"""
+
+from __future__ import annotations
+
+import io
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+# Mock database & auth driver modules untuk pengujian lokal tanpa database server aktif
+for m in [
+    "sqlalchemy",
+    "sqlalchemy.orm",
+    "sqlalchemy.exc",
+    "pymysql",
+    "passlib",
+    "passlib.context",
+    "jose",
+    "jose.jwt",
+    "bcrypt",
+    "cryptography",
+]:
+    if m not in sys.modules:
+        sys.modules[m] = MagicMock()
+
+class MockDeclarativeBase:
+    metadata = MagicMock()
+    def __init__(self, *args, **kwargs):
+        pass
+
+sys.modules["sqlalchemy.orm"].DeclarativeBase = MockDeclarativeBase
+
+# Ensure backend root is on sys.path
+BASE_DIR = Path(__file__).resolve().parent.parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+import cv2
+import numpy as np
+from fastapi.testclient import TestClient
+
+from app.core.config import settings
+from app.main import app
+from app.schemas.measles import (
+    MeaslesClassEnum,
+    MeaslesPredictResponse,
+)
+from app.services.measles_engine import (
+    CLASS_NAMES,
+    InferenceRuntimeError,
+    ModelLoadError,
+)
+
+
+class TestMainApplicationIntegration(unittest.TestCase):
+    """Suite pengujian End-to-End pada aplikasi FastAPI utama."""
+
+    @classmethod
+    def setUpClass(cls):
+        """Inisialisasi TestClient terhadap aplikasi utama app.main."""
+        cls.client = TestClient(app, raise_server_exceptions=False)
+
+        # 1. Synthetic valid PNG
+        img = np.zeros((100, 100, 3), dtype=np.uint8)
+        img[:, :, 0] = 50
+        img[:, :, 1] = 120
+        img[:, :, 2] = 200
+        _, buf_png = cv2.imencode(".png", img)
+        cls.valid_png = buf_png.tobytes()
+
+        # 2. Synthetic valid JPEG
+        _, buf_jpg = cv2.imencode(".jpg", img)
+        cls.valid_jpg = buf_jpg.tobytes()
+
+        # 3. Synthetic valid WebP
+        _, buf_webp = cv2.imencode(".webp", img)
+        cls.valid_webp = buf_webp.tobytes()
+
+        # 4. Dataset clinical sample
+        cls.clinical_sample_path = (
+            BASE_DIR.parent / "dataset_split" / "test" / "Measles" / "MSID_measles11.png"
+        )
+
+    # =========================================================================
+    # TEST A & B: STARTUP & ROUTE REGISTRATION
+    # =========================================================================
+
+    def test_01_app_startup_and_measles_route_registered(self):
+        """A & B: Aplikasi berhasil memuat rute final /api/v1/measles/predict."""
+        routes = [r.path for r in app.routes if getattr(r, "methods", None)]
+        expected_route = f"{settings.API_PREFIX}/v1/measles/predict"
+
+        self.assertIn(
+            expected_route,
+            routes,
+            f"Rute terdaftar tidak memuat {expected_route}. Rute yang ada: {routes}",
+        )
+        # Pastikan tidak terjadi duplikasi prefix (/api/api/...)
+        self.assertNotIn("/api/api", "".join(routes))
+
+    def test_02_existing_routes_intact(self):
+        """B: Seluruh rute lama tetap terdaftar lengkap dan tidak hilang."""
+        routes = [r.path for r in app.routes if getattr(r, "methods", None)]
+        expected_existing = [
+            "/",
+            f"{settings.API_PREFIX}/auth/login",
+            f"{settings.API_PREFIX}/auth/register",
+            f"{settings.API_PREFIX}/users",
+            f"{settings.API_PREFIX}/gejala",
+            f"{settings.API_PREFIX}/face/status",
+            f"{settings.API_PREFIX}/face/recognize",
+            f"{settings.API_PREFIX}/pakar/master-gejala",
+        ]
+        for route in expected_existing:
+            self.assertIn(route, routes, f"Rute lama '{route}' hilang setelah integrasi!")
+
+    # =========================================================================
+    # TEST C: MEASLESWATCH HTTP INFERENCE VIA APP.MAIN
+    # =========================================================================
+
+    def test_03_http_inference_valid_png(self):
+        """C1: Upload PNG valid ke aplikasi utama mengembalikan HTTP 200 dan schema valid."""
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("test.png", self.valid_png, "image/png")},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        validated = MeaslesPredictResponse(**data)
+        self.assertIn(validated.prediction.value, CLASS_NAMES)
+        self.assertGreaterEqual(validated.confidence, 0.0)
+        self.assertLessEqual(validated.confidence, 1.0)
+        self.assertGreater(validated.inference_time_ms, 0.0)
+        self.assertIn("skrining", validated.disclaimer.lower())
+
+    def test_04_http_inference_valid_jpeg(self):
+        """C2: Upload JPEG valid ke aplikasi utama mengembalikan HTTP 200."""
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("test.jpg", self.valid_jpg, "image/jpeg")},
+        )
+        self.assertEqual(response.status_code, 200)
+        validated = MeaslesPredictResponse(**response.json())
+        self.assertIn(validated.prediction.value, CLASS_NAMES)
+
+    def test_05_http_inference_valid_webp(self):
+        """C3: Upload WebP valid ke aplikasi utama mengembalikan HTTP 200."""
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("test.webp", self.valid_webp, "image/webp")},
+        )
+        self.assertEqual(response.status_code, 200)
+        validated = MeaslesPredictResponse(**response.json())
+        self.assertIn(validated.prediction.value, CLASS_NAMES)
+
+    def test_06_http_inference_real_clinical_sample(self):
+        """C4: Upload sampel klinis riil (MSID_measles11.png) menghasilkan prediksi Measles."""
+        if not self.clinical_sample_path.exists():
+            self.skipTest(f"Sampel klinis tidak ditemukan pada: {self.clinical_sample_path}")
+
+        with open(self.clinical_sample_path, "rb") as f:
+            real_bytes = f.read()
+
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("MSID_measles11.png", real_bytes, "image/png")},
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["prediction"], "Measles")
+        self.assertEqual(data["class_index"], 4)
+        self.assertGreater(data["confidence"], 0.95)
+
+    # =========================================================================
+    # TEST D: NEGATIVE TESTING (ERROR HANDLING)
+    # =========================================================================
+
+    def test_07_empty_file_returns_400(self):
+        """D1: Berkas kosong mengembalikan HTTP 400 Bad Request."""
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("empty.png", b"", "image/png")},
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("kosong", response.json().get("detail", "").lower())
+
+    def test_08_unsupported_format_returns_415(self):
+        """D2: Format berkas teks/PDF non-citra mengembalikan HTTP 415."""
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("notes.txt", b"Plain text file content", "text/plain")},
+        )
+        self.assertEqual(response.status_code, 415)
+        self.assertIn("tidak didukung", response.json().get("detail", "").lower())
+
+    def test_09_corrupted_image_returns_422(self):
+        """D3: Citra rusak melempar HTTP 422 Unprocessable Content."""
+        corrupted = b"\x89PNG\r\n\x1a\n" + b"GARBAGE_MALFORMED_DATA_123456"
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("corrupt.png", corrupted, "image/png")},
+        )
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("rusak", response.json().get("detail", "").lower())
+
+    def test_10_oversized_file_returns_413(self):
+        """D4: Berkas > 10 MB mengembalikan HTTP 413 Content Too Large."""
+        oversized = b"\x89PNG\r\n\x1a\n" + b"A" * (10 * 1024 * 1024 + 1024)
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("oversized.png", oversized, "image/png")},
+        )
+        self.assertEqual(response.status_code, 413)
+        self.assertIn("10 mb", response.json().get("detail", "").lower())
+
+    def test_11_model_unavailable_returns_503(self):
+        """D5: Kegagalan pemuatan bobot model ONNX menghasilkan HTTP 503 tanpa leak trace."""
+        with patch("app.routers.measles.get_measles_engine") as mock_engine:
+            mock_engine.return_value.predict_bytes.side_effect = ModelLoadError(
+                "Internal file /secret/path/model.onnx missing"
+            )
+            response = self.client.post(
+                f"{settings.API_PREFIX}/v1/measles/predict",
+                files={"file": ("test.png", self.valid_png, "image/png")},
+            )
+            self.assertEqual(response.status_code, 503)
+            detail = response.json().get("detail", "")
+            self.assertIn("tidak tersedia", detail.lower())
+            self.assertNotIn("/secret/path", detail)
+
+    def test_12_runtime_error_returns_500(self):
+        """D6: Kesalahan runtime ONNX melempar HTTP 500 tanpa leak traceback internal."""
+        with patch("app.routers.measles.get_measles_engine") as mock_engine:
+            mock_engine.return_value.predict_bytes.side_effect = InferenceRuntimeError(
+                "Segmentation fault at 0x00000000"
+            )
+            response = self.client.post(
+                f"{settings.API_PREFIX}/v1/measles/predict",
+                files={"file": ("test.png", self.valid_png, "image/png")},
+            )
+            self.assertEqual(response.status_code, 500)
+            detail = response.json().get("detail", "")
+            self.assertIn("kesalahan", detail.lower())
+            self.assertNotIn("0x00000000", detail)
+
+    # =========================================================================
+    # TEST E: EXISTING ENDPOINT REGRESSION
+    # =========================================================================
+
+    def test_13_existing_root_endpoint_regression(self):
+        """E1: Endpoint root (GET /) tetap berfungsi normal mengembalikan HTTP 200."""
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data.get("status"), "ok")
+        self.assertEqual(data.get("app"), settings.APP_NAME)
+
+    def test_14_existing_openapi_and_docs_regression(self):
+        """E2: Endpoint OpenAPI (GET /openapi.json) dan Swagger docs (GET /docs) memuat rute baru."""
+        # Swagger docs
+        docs_resp = self.client.get("/docs")
+        self.assertEqual(docs_resp.status_code, 200)
+
+        # OpenAPI schema
+        openapi_resp = self.client.get("/openapi.json")
+        self.assertEqual(openapi_resp.status_code, 200)
+        openapi_data = openapi_resp.json()
+        paths = openapi_data.get("paths", {})
+        expected_path = f"{settings.API_PREFIX}/v1/measles/predict"
+        self.assertIn(
+            expected_path,
+            paths,
+            f"OpenAPI schema tidak memuat endpoint {expected_path}",
+        )
+        # Verifikasi tag OpenAPI
+        measles_post = paths[expected_path].get("post", {})
+        self.assertIn("MeaslesWatch AI", measles_post.get("tags", []))
+
+    # =========================================================================
+    # TEST F: AUTHENTICATION VERIFICATION
+    # =========================================================================
+
+    def test_15_measles_endpoint_is_public_without_jwt(self):
+        """F1: Endpoint MeaslesWatch dapat diakses tanpa Authorization header (tanpa JWT)."""
+        # Request tanpa header Authorization
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("test.png", self.valid_png, "image/png")},
+        )
+        self.assertNotEqual(
+            response.status_code,
+            401,
+            "Endpoint mengembalikan 401 Unauthorized padahal berstatus publik!",
+        )
+        self.assertEqual(response.status_code, 200)
+
+    def test_16_measles_endpoint_ignores_dummy_jwt(self):
+        """F2: Endpoint MeaslesWatch tetap sukses meskipun Authorization header kosong/acak."""
+        response = self.client.post(
+            f"{settings.API_PREFIX}/v1/measles/predict",
+            files={"file": ("test.png", self.valid_png, "image/png")},
+            headers={"Authorization": "Bearer non_existent_token"},
+        )
+        self.assertEqual(response.status_code, 200)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
