@@ -1,0 +1,65 @@
+"""
+Pydantic schemas for MeaslesWatch AI API endpoints.
+Huawei ICT Competition 2026–2027 | Innovation Track
+Team: Inovexa
+"""
+
+from enum import Enum
+from pydantic import BaseModel, ConfigDict, Field
+
+
+class MeaslesClassEnum(str, Enum):
+    """Enam kelas klasifikasi penyakit ruam kulit MeaslesWatch AI."""
+    CHICKENPOX = "Chickenpox"
+    COWPOX = "Cowpox"
+    HFMD = "HFMD"
+    HEALTHY = "Healthy"
+    MEASLES = "Measles"
+    MONKEYPOX = "Monkeypox"
+
+
+class MeaslesProbabilities(BaseModel):
+    """Distribusi probabilitas Softmax untuk keenam kelas penyakit."""
+    model_config = ConfigDict(extra="forbid")
+
+    Chickenpox: float = Field(..., ge=0.0, le=1.0, description="Probabilitas kelas Chickenpox (Cacar Air)")
+    Cowpox: float = Field(..., ge=0.0, le=1.0, description="Probabilitas kelas Cowpox (Cacar Sapi)")
+    HFMD: float = Field(..., ge=0.0, le=1.0, description="Probabilitas kelas HFMD (Flu Singapura)")
+    Healthy: float = Field(..., ge=0.0, le=1.0, description="Probabilitas kelas Healthy (Kulit Sehat / Normal)")
+    Measles: float = Field(..., ge=0.0, le=1.0, description="Probabilitas kelas Measles (Campak)")
+    Monkeypox: float = Field(..., ge=0.0, le=1.0, description="Probabilitas kelas Monkeypox (Cacar Monyet)")
+
+
+class MeaslesPredictResponse(BaseModel):
+    """Schema respons untuk endpoint POST /v1/measles/predict."""
+    model_config = ConfigDict(from_attributes=True)
+
+    prediction: MeaslesClassEnum = Field(
+        ...,
+        description="Nama kelas terprediksi dengan nilai estimasi probabilitas tertinggi."
+    )
+    class_index: int = Field(
+        ...,
+        ge=0,
+        le=5,
+        description="Indeks numerik kelas terprediksi (0: Chickenpox, 1: Cowpox, 2: HFMD, 3: Healthy, 4: Measles, 5: Monkeypox)."
+    )
+    confidence: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Nilai probabilitas keluaran model AI (model output confidence, bukan kepastian klinis definitif)."
+    )
+    probabilities: MeaslesProbabilities = Field(
+        ...,
+        description="Distribusi probabilitas untuk seluruh 6 kelas hasil perhitungan Softmax."
+    )
+    inference_time_ms: float = Field(
+        ...,
+        ge=0.0,
+        description="Durasi pemrosesan citra dan inferensi model dalam milidetik (ms)."
+    )
+    disclaimer: str = Field(
+        ...,
+        description="Pernyataan batas medis bahwa hasil merupakan alat skrining awal dan bukan diagnosis medis definitif."
+    )

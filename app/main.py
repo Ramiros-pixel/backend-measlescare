@@ -22,6 +22,7 @@ from app.seeders.pakar_seeder import (
 # IMPORT ROUTERS
 from app.routers import auth, face, gejala, users
 from app.routers import pakar
+from app.routers import measles
 
 # FASTAPI APPLICATION
 app = FastAPI(
@@ -67,6 +68,11 @@ app.include_router(
 
 app.include_router(
     pakar.router,
+    prefix=settings.API_PREFIX
+)
+
+app.include_router(
+    measles.router,
     prefix=settings.API_PREFIX
 )
 
