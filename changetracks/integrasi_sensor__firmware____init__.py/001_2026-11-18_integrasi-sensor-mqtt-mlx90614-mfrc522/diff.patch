@@ -1,0 +1,4 @@
+--- a/integrasi_sensor/firmware/__init__.py
++++ b/integrasi_sensor/firmware/__init__.py
+@@ -0,0 +1 @@
++"""Firmware Python untuk sensor kiosk (MLX90614 + MFRC522) -> MQTT."""

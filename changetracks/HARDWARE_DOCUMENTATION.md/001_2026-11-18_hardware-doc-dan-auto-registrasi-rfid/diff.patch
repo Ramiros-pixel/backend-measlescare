@@ -1,0 +1,204 @@
+--- a/HARDWARE_DOCUMENTATION.md
++++ b/HARDWARE_DOCUMENTATION.md
+@@ -0,0 +1,201 @@
++# HARDWARE_DOCUMENTATION — MeaslesCare
++
++Dokumentasi hardware & sistem kerja integrasi sensor kiosk: **GPIO tiap sensor**,
++**cara menjalankan**, dan **cara kerja sistem** (RFID + suhu IR → MQTT → database).
++
++| Item | Nilai |
++| :--- | :--- |
++| Sensor suhu | MLX90614 (GY-906 / HW-691) — IR non-contact, I2C |
++| Sensor RFID | MFRC522 Mini — 13.56 MHz, SPI |
++| Board target | Raspberry Pi / Orange Pi (header 40-pin) |
++| Transport data | MQTT QoS 1 via broker Mosquitto (Docker) |
++| Penerima data | `integrasi_sensor/bridge/mqtt_bridge.py` → MySQL `db_huawei` |
++
++---
++
++## 1. GPIO tiap sensor
++
++Nomor pin = **pin fisik header 40-pin (mode BOARD)**. Kolom BCM = nomor GPIO
++yang dipakai pustaka. Pastikan hanya memakai **3.3V** (bukan 5V).
++
++### 1.1 MLX90614 (GY-906 / HW-691) — I2C
++
++| Kaki modul | Pin fisik (BOARD) | BCM | Arah | Keterangan |
++| :--- | :--- | :--- | :--- | :--- |
++| VIN | 1 | — | daya | 3.3V |
++| GND | 6 | — | ground | 0V |
++| SDA | 3 | GPIO2 (SDA.1) | data | jalur data I2C |
++| SCL | 5 | GPIO3 (SCL.1) | clock | jalur clock I2C |
++
++- Alamat I2C: `0x5A`, bus I2C **1** (`/dev/i2c-1`).
++- Jika pembacaan gagal (PEC salah), tambahkan resistor pull-up **4,7 kΩ**
++  SDA dan SCL ke 3.3V (sebagian modul GY-906 belum ada pull-up onboard).
++
++### 1.2 MFRC522 Mini — SPI
++
++| Kaki modul | Pin fisik (BOARD) | BCM | Arah | Keterangan |
++| :--- | :--- | :--- | :--- | :--- |
++| SDA (SS) | 24 | GPIO8 (CE0) | keluar | chip select SPI |
++| SCK | 23 | GPIO11 (SCLK) | keluar | clock SPI |
++| MOSI | 19 | GPIO10 (MOSI) | keluar | data master → slave |
++| MISO | 21 | GPIO9 (MISO) | masuk | data slave → master |
++| IRQ | — | — | — | tidak dipakai |
++| RST | 22 | GPIO25 | keluar | reset reader (dikendalikan kode) |
++| 3.3V | 1 atau 17 | — | daya | 3.3V |
++| GND | 6 atau 9 | — | ground | 0V |
++
++- Bus SPI **0**, device **0** (`/dev/spidev0.0`), clock 1 MHz (default kode).
++- Pin RST dikendalikan driver `mfrc522.py` (mode BOARD, pin 22).
++
++> Catatan Orange Pi: header 40-pin umumnya kompatibel posisinya dengan
++> Raspberry Pi, tapi verifikasi dengan `pinout` / `armbian-config` sebelum
++> menyolder. Kedua driver memakai GPIO otomatis: `RPi.GPIO` di Raspberry Pi,
++> `OPi.GPIO` di Orange Pi.
++
++---
++
++## 2. Cara menjalankan
++
++### 2.1 Prasyarat
++
++```bash
++# 1) Aktifkan I2C dan SPI
++#    Raspberry Pi : sudo raspi-config -> Interface Options -> I2C/SPI: enable
++#    Orange Pi    : sudo armbian-config -> System -> Hardware -> i2c + spidev
++ls /dev/i2c-1 /dev/spidev0.0        # harus ada
++
++# 2) Dependensi Python (venv sendiri, tidak mengganggu backend)
++cd backend-measlescare
++python3 -m venv .venv-sensor
++source .venv-sensor/bin/activate
++pip install -r integrasi_sensor/requirements.txt
++```
++
++### 2.2 Urutan menjalankan
++
++```bash
++# 1) Broker Mosquitto (Docker)
++docker compose up -d mosquitto
++docker compose ps mosquitto          # harus Up (healthy)
++
++# 2) Bridge (subscriber MQTT -> MySQL)  — terminal 1
++python3 -m integrasi_sensor.bridge.mqtt_bridge --verbose
++
++# 3) Publisher (baca sensor)          — terminal 2
++python3 -m integrasi_sensor.firmware.sensor_publisher --verbose
++```
++
++Tempelkan kartu ke reader, arahkan MLX90614 ke dahi (jarak ±3–5 cm).
++Satu baris `Gejala` baru otomatis tersimpan.
++
++### 2.3 Uji tanpa hardware
++
++```bash
++docker compose exec mosquitto mosquitto_pub -t "measlescare/kiosk-01/reading" \
++  -m '{"device_id":"kiosk-01","rfid_uid":"E0040100ABCDEF0001","suhu":36.7,"sensor":"mlx90614","ts":"2026-11-18T15:04:05+00:00"}'
++```
++
++---
++
++## 3. Sistem kerja
++
++```
++[ MFRC522 ] --SPI--> [ sensor_publisher.py ] --MQTT QoS 1--> [ Mosquitto ] --> [ mqtt_bridge.py ] --> MySQL db_huawei
++[ MLX90614 ] --I2C--> [   (Orange Pi/Pi)   ]                 (Docker :1883)      (subscriber)
++                                                                                     |
++                                  1. scan kartu -> UID hex            1. validasi payload
++                                  2. ukur suhu (median)               2. rfid_uid -> patient_cards -> NIK
++                                  3. publish JSON                    3. kartu baru? -> daftarkan otomatis
++                                                                     4. insert Gejala (Suhu, Batuk NULL)
++```
++
++### 3.1 Publisher (firmware)
++
++1. `MFRC522.read_card_serial()` — deteksi kartu di medan (REQA + anticoll),
++   ambil **UID 4 byte**, konversi ke hex huruf besar (contoh `E0040100`).
++2. `MLX90614.read_object_median(5)` — ukur suhu objek 5×, ambil median,
++   verifikasi CRC (PEC) tiap pembacaan.
++3. Publish JSON QoS 1 ke topik `measlescare/<DEVICE_ID>/reading`:
++
++```json
++{
++  "device_id": "kiosk-01",
++  "rfid_uid": "E0040100ABCDEF0001",
++  "suhu": 36.7,
++  "sensor": "mlx90614",
++  "ts": "2026-11-18T15:04:05+00:00"
++}
++```
++
++4. Tunggu kartu dilepas (≤10 detik) + jeda `RFID_DEBOUNCE_SEC` sebelum scan
++   berikutnya.
++
++### 3.2 Bridge (subscriber → database)
++
++1. Subscribe `measlescare/+/reading` (QoS 1).
++2. **Validasi payload**: `rfid_uid` string 2–64 karakter; `suhu` angka dalam
++   rentang 25–45 °C (variabel `SUHU_MIN`/`SUHU_MAX`). Payload invalid dilewati.
++3. **Dedupe**: pengiriman ulang QoS 1 yang membawa payload identik (kunci
++   `rfid_uid:suhu:ts`) dalam 60 detik tidak disimpan dua kali.
++4. **Cari kartu** di `patient_cards` (`rfid_uid`):
++   - Ditemukan → pakai `NIK` pemilik kartu.
++   - **Tidak ditemukan → kartu didaftarkan otomatis** (lihat §4), lalu lanjut.
++5. **Simpan**: `INSERT Gejala (id_gejala, NIK, Suhu, Batuk=NULL)` —
++   `Tanggal` otomatis (waktu server).
++
++### 3.3 Tabel database yang terlibat
++
++| Tabel | Kolom yang dipakai | Peran |
++| :--- | :--- | :--- |
++| `patient_cards` | `rfid_uid`, `NIK` | pemetaan kartu → pasien |
++| `Users` | `NIK`, `Name`, `password`, `id_Role` | pasien (dibuat otomatis bila kartu baru) |
++| `Role` | `id_Role` | `R2` = pasien |
++| `Gejala` | `id_gejala`, `NIK`, `Suhu`, `Batuk`, `Tanggal` | riwayat pengukuran |
++
++Tidak ada perubahan skema: semua kolom sudah tersedia di database backend.
++
++---
++
++## 4. Auto-registrasi kartu RFID
++
++Ketika kartu terbaca dan **belum terdaftar**, bridge otomatis membuat data
++pasien baru seolah-olah kartu sudah "memiliki" data — data diturunkan dari
++hex UID chip (tidak perlu menulis apa pun ke kartu):
++
++| Field | Nilai yang dibuat |
++| :--- | :--- |
++| `patient_cards.rfid_uid` | hex UID dari chip (huruf besar) |
++| `Users.NIK` | **16 digit numerik deterministik** dari hash SHA-256 hex UID (`f"{int(hashlib.sha256(rfid.encode()).digest()[:8], 'big') % 10**16:016d}"`) |
++| `Users.Name` | `Pasien <HEX-UID>` |
++| `Users.Tempat_Tgl_Lahir` | `-` |
++| `Users.Golongan_darah` | NULL |
++| `Users.Email` | NULL |
++| `Users.Alamat` | `-` |
++| `Users.password` | hash `rfid123` (bisa login bila perlu) |
++| `Users.id_Role` | `R2` |
++
++Sifat NIK otomatis:
++
++- **Deterministik** — kartu yang sama selalu menghasilkan NIK yang sama,
++  jadi tidak akan dobel daftar meski kartu dilepas-tempel berulang kali.
++- **Konsisten 16 digit** — sesuai format NIK yang dipakai endpoint lain.
++
++Pengaturan (opsional, `integrasi_sensor/config.example.env`):
++
++| Variabel | Default | Keterangan |
++| :--- | :--- | :--- |
++| `RFID_AUTO_REGISTER` | `true` | matikan → kartu tak dikenal dilewati seperti versi awal |
++| `RFID_DEFAULT_PASSWORD` | `rfid123` | password akun pasien yang dibuat otomatis |
++
++---
++
++## 5. Troubleshooting cepat
++
++| Gejala | Penyebab / solusi |
++| :--- | :--- |
++| `smbus2 belum terpasang` | `pip install -r integrasi_sensor/requirements.txt` |
++| `gagal membaca MLX90614 (PEC)` | cek wiring SDA/SCL; tambah pull-up 4,7 kΩ; cek `i2cdetect -y 1` (harus ada `5A`) |
++| Reader RFID tidak mendeteksi | cek pin SPI (24/23/19/21) & RST (22); pastikan `spidev` aktif; kartu Mifare 13.56 MHz |
++| `koneksi ditolak broker` | broker belum up / port beda; autentikasi aktif tapi `MQTT_USER` kosong |
++| Bridge tidak menyimpan | kartu di luar rentang suhu (25–45 °C); cek log `--verbose` |
++| NIK tabrakan (jarang) | hash 8 byte mod 10^16 — probabilitas sangat kecil; data sudah ada di `Users` dengan NIK sama, dilewati & dicatat log |

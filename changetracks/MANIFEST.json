@@ -1,7 +1,7 @@
 {
   "project": "backend-measlescare",
   "convention": "1 folder per file; subfolder per prompt",
-  "updated_at": "2026-11-18T17:04:11+00:00",
+  "updated_at": "2026-11-18T18:18:24+00:00",
   "tracks": [
     {
       "file": "AGENTS.md",
@@ -79,6 +79,132 @@
       "summary": "tambah-seeder-data-lengkap-dummy",
       "prompt": "Buatkan seeder data agar backend-measlescare bisa di-run dengan data yang sama pada device manapun dengan data dummy.",
       "at": "2026-11-18T17:04:11+00:00"
+    },
+    {
+      "file": "integrasi_sensor/README.md",
+      "folder": "integrasi_sensor__README.md/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:47+00:00"
+    },
+    {
+      "file": "integrasi_sensor/requirements.txt",
+      "folder": "integrasi_sensor__requirements.txt/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:47+00:00"
+    },
+    {
+      "file": "integrasi_sensor/config.example.env",
+      "folder": "integrasi_sensor__config.example.env/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:47+00:00"
+    },
+    {
+      "file": "integrasi_sensor/firmware/__init__.py",
+      "folder": "integrasi_sensor__firmware____init__.py/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:47+00:00"
+    },
+    {
+      "file": "integrasi_sensor/firmware/mlx90614.py",
+      "folder": "integrasi_sensor__firmware__mlx90614.py/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:47+00:00"
+    },
+    {
+      "file": "integrasi_sensor/firmware/mfrc522.py",
+      "folder": "integrasi_sensor__firmware__mfrc522.py/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:47+00:00"
+    },
+    {
+      "file": "integrasi_sensor/firmware/sensor_publisher.py",
+      "folder": "integrasi_sensor__firmware__sensor_publisher.py/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:48+00:00"
+    },
+    {
+      "file": "integrasi_sensor/bridge/__init__.py",
+      "folder": "integrasi_sensor__bridge____init__.py/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:48+00:00"
+    },
+    {
+      "file": "integrasi_sensor/bridge/mqtt_bridge.py",
+      "folder": "integrasi_sensor__bridge__mqtt_bridge.py/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:48+00:00"
+    },
+    {
+      "file": "mosquitto/config/mosquitto.conf",
+      "folder": "mosquitto__config__mosquitto.conf/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:52:48+00:00"
+    },
+    {
+      "file": "docker-compose.yml",
+      "folder": "docker-compose.yml/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:54:18+00:00"
+    },
+    {
+      "file": ".env.example",
+      "folder": ".env.example/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:54:18+00:00"
+    },
+    {
+      "file": "Documentation.md",
+      "folder": "Documentation.md/001_2026-11-18_integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "summary": "integrasi-sensor-mqtt-mlx90614-mfrc522",
+      "prompt": "buatkan saya folder integrasi sensor - SENSOR SUHU IR NON CONTACT MLX90614 GY-906 HW-691 CONTACTLESS TEMPERATURE SENSOR MODULE - MODULE RFID MFRC522 MINI 13.56MHZ SPI CARD + KEYCHAIN dengan menggunakan mqtt mosquitto untuk nantinya distore ke db yang ada di backend-measlescare dari kolom db yang sudah disediakan seperti kolom rfid dan suhu",
+      "at": "2026-11-18T17:54:18+00:00"
+    },
+    {
+      "file": "HARDWARE_DOCUMENTATION.md",
+      "folder": "HARDWARE_DOCUMENTATION.md/001_2026-11-18_hardware-doc-dan-auto-registrasi-rfid",
+      "summary": "hardware-doc-dan-auto-registrasi-rfid",
+      "prompt": "buatkan documentation pada folder HARDWARE_DOCUMENTATION.md isinya gpio setiap sensor dan buatkan saya cara run dan sistem kerja kemudian ganti juga buat inisialisasi rfid dengan component yang diperlukan pada database jadi ketika pembacaan code hex rfid terbaca otomatis mengisi labeling data yang sudah diberikan pada hexa chip kartu rfid tersebut (jadi buat seolah olah kartu itu udah punya data berdasarkan hex yang ada di chip rfid)",
+      "at": "2026-11-18T18:18:24+00:00"
+    },
+    {
+      "file": "integrasi_sensor/bridge/mqtt_bridge.py",
+      "folder": "integrasi_sensor__bridge__mqtt_bridge.py/002_2026-11-18_hardware-doc-dan-auto-registrasi-rfid",
+      "summary": "hardware-doc-dan-auto-registrasi-rfid",
+      "prompt": "buatkan documentation pada folder HARDWARE_DOCUMENTATION.md isinya gpio setiap sensor dan buatkan saya cara run dan sistem kerja kemudian ganti juga buat inisialisasi rfid dengan component yang diperlukan pada database jadi ketika pembacaan code hex rfid terbaca otomatis mengisi labeling data yang sudah diberikan pada hexa chip kartu rfid tersebut (jadi buat seolah olah kartu itu udah punya data berdasarkan hex yang ada di chip rfid)",
+      "at": "2026-11-18T18:18:24+00:00"
+    },
+    {
+      "file": "integrasi_sensor/README.md",
+      "folder": "integrasi_sensor__README.md/002_2026-11-18_hardware-doc-dan-auto-registrasi-rfid",
+      "summary": "hardware-doc-dan-auto-registrasi-rfid",
+      "prompt": "buatkan documentation pada folder HARDWARE_DOCUMENTATION.md isinya gpio setiap sensor dan buatkan saya cara run dan sistem kerja kemudian ganti juga buat inisialisasi rfid dengan component yang diperlukan pada database jadi ketika pembacaan code hex rfid terbaca otomatis mengisi labeling data yang sudah diberikan pada hexa chip kartu rfid tersebut (jadi buat seolah olah kartu itu udah punya data berdasarkan hex yang ada di chip rfid)",
+      "at": "2026-11-18T18:18:24+00:00"
+    },
+    {
+      "file": "integrasi_sensor/config.example.env",
+      "folder": "integrasi_sensor__config.example.env/002_2026-11-18_hardware-doc-dan-auto-registrasi-rfid",
+      "summary": "hardware-doc-dan-auto-registrasi-rfid",
+      "prompt": "buatkan documentation pada folder HARDWARE_DOCUMENTATION.md isinya gpio setiap sensor dan buatkan saya cara run dan sistem kerja kemudian ganti juga buat inisialisasi rfid dengan component yang diperlukan pada database jadi ketika pembacaan code hex rfid terbaca otomatis mengisi labeling data yang sudah diberikan pada hexa chip kartu rfid tersebut (jadi buat seolah olah kartu itu udah punya data berdasarkan hex yang ada di chip rfid)",
+      "at": "2026-11-18T18:18:24+00:00"
+    },
+    {
+      "file": "Documentation.md",
+      "folder": "Documentation.md/002_2026-11-18_hardware-doc-dan-auto-registrasi-rfid",
+      "summary": "hardware-doc-dan-auto-registrasi-rfid",
+      "prompt": "buatkan documentation pada folder HARDWARE_DOCUMENTATION.md isinya gpio setiap sensor dan buatkan saya cara run dan sistem kerja kemudian ganti juga buat inisialisasi rfid dengan component yang diperlukan pada database jadi ketika pembacaan code hex rfid terbaca otomatis mengisi labeling data yang sudah diberikan pada hexa chip kartu rfid tersebut (jadi buat seolah olah kartu itu udah punya data berdasarkan hex yang ada di chip rfid)",
+      "at": "2026-11-18T18:18:24+00:00"
     }
   ]
 }

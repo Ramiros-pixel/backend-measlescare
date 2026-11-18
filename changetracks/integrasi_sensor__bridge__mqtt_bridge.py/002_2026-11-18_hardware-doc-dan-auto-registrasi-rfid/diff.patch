@@ -1,0 +1,116 @@
+--- a/integrasi_sensor/bridge/mqtt_bridge.py
++++ b/integrasi_sensor/bridge/mqtt_bridge.py
+@@ -12,6 +12,7 @@
+ from __future__ import annotations
+ 
+ import argparse
++import hashlib
+ import json
+ import logging
+ import os
+@@ -85,21 +86,59 @@
+         return False
+ 
+ 
+-def store_reading(db, rfid_uid: str, suhu: float, payload: dict) -> tuple[str, str | None]:
+-    """Simpan baris Gejala baru atas NIK pemilik kartu.
+-
+-    Kembalikan (status, NIK):
+-    - ("saved", nik)      -> tersimpan
+-    - ("card_unknown", None) -> rfid_uid tidak ada di patient_cards
++def nik_from_rfid(rfid_uid: str) -> str:
++    """NIK 16 digit numerik deterministik dari hex UID kartu.
++
++    Hash SHA-256 dari UID, 8 byte pertama diubah ke bilangan lalu di-mod 10^16.
++    Kartu yang sama selalu menghasilkan NIK yang sama (tidak dobel daftar).
++    """
++    digest = hashlib.sha256(rfid_uid.upper().encode("ascii")).digest()
++    value = int.from_bytes(digest[:8], "big") % 10**16
++    return f"{value:016d}"
++
++
++def store_reading(db, rfid_uid: str, suhu: float, payload: dict) -> tuple[str, str | None, bool]:
++    """Simpan baris Gejala atas NIK pemilik kartu; kartu baru didaftarkan otomatis.
++
++    Kartu yang belum ada di `patient_cards` dibuatkan pasien baru (Users role R2,
++    data diturunkan dari hex UID; password default RFID_DEFAULT_PASSWORD) lalu
++    disimpan. Matikan perilaku ini dengan env `RFID_AUTO_REGISTER=false`.
++
++    Kembalikan (status, NIK, auto_registered):
++    - ("saved", nik, False)         -> kartu sudah terdaftar, gejala tersimpan
++    - ("saved", nik, True)          -> kartu baru didaftarkan lalu gejala tersimpan
++    - ("card_unknown", None, False) -> kartu tak dikenal & auto-register mati
+ 
+     Import `app.models` dilakukan di sini agar modul tetap bisa diimpor tanpa
+     dependensi backend terpasang (mis. untuk unit test validasi).
+     """
+-    from app.models.gejala import Gejala, PatientCard
++    from app.core.security import hash_password
++    from app.models.gejala import Gejala, PatientCard, User
+ 
+     card = db.query(PatientCard).filter(PatientCard.rfid_uid == rfid_uid).first()
++    if card is None and _cfg("RFID_AUTO_REGISTER", "true").lower() not in (
++        "1", "true", "yes", "on"
++    ):
++        return ("card_unknown", None, False)
++
++    auto_registered = card is None
+     if card is None:
+-        return ("card_unknown", None)
++        nik = nik_from_rfid(rfid_uid)
++        db.add(
++            User(
++                NIK=nik,
++                Name=f"Pasien {rfid_uid}",
++                Tempat_Tgl_Lahir="-",
++                Golongan_darah=None,
++                Email=None,
++                Alamat="-",
++                password=hash_password(_cfg("RFID_DEFAULT_PASSWORD", "rfid123")),
++                id_Role="R2",
++            )
++        )
++        card = PatientCard(rfid_uid=rfid_uid, NIK=nik)
++        db.add(card)
++
+     gejala = Gejala(
+         id_gejala=uuid.uuid4().hex[:20],
+         NIK=card.NIK,
+@@ -108,7 +147,7 @@
+     )
+     db.add(gejala)
+     db.commit()
+-    return ("saved", card.NIK)
++    return ("saved", card.NIK, auto_registered)
+ 
+ 
+ def main(argv: list[str] | None = None) -> int:
+@@ -166,7 +205,7 @@
+ 
+         db = SessionLocal()
+         try:
+-            status, nik = store_reading(db, rfid_uid, suhu, data)
++            status, nik, auto_registered = store_reading(db, rfid_uid, suhu, data)
+         except Exception:
+             db.rollback()
+             log.exception("gagal menyimpan pembacaan rfid=%s", rfid_uid)
+@@ -175,9 +214,17 @@
+             db.close()
+ 
+         if status == "card_unknown":
+-            log.warning("kartu %s belum terdaftar di patient_cards - dilewati", rfid_uid)
++            log.warning(
++                "kartu %s belum terdaftar dan auto-register mati - dilewati", rfid_uid
++            )
+         else:
+-            log.info("tersimpan: rfid=%s NIK=%s suhu=%.2f C", rfid_uid, nik, suhu)
++            log.info(
++                "tersimpan: rfid=%s NIK=%s suhu=%.2f C%s",
++                rfid_uid,
++                nik,
++                suhu,
++                " (kartu baru didaftarkan otomatis)" if auto_registered else "",
++            )
+ 
+     client = mqtt.Client(
+         mqtt.CallbackAPIVersion.VERSION2,

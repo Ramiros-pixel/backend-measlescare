@@ -1,0 +1,5 @@
+# Salin menjadi .env di server lalu ganti nilainya:
+#   cp .env.example .env
+DB_ROOT_PW=ubah-ini-password-mysql-root
+SECRET_KEY=ubah-ini-secret-key-acak-panjang
+ACCESS_TOKEN_EXPIRE_MINUTES=120

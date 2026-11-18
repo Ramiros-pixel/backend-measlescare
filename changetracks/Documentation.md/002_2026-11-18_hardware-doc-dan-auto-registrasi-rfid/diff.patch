@@ -1,0 +1,16 @@
+--- a/Documentation.md
++++ b/Documentation.md
+@@ -262,8 +262,11 @@
+ }
+ ```
+ 
+-Aturan penyimpanan bridge: kartu yang belum ada di `patient_cards` **tidak**
+-disimpan (hanya dicatat di log); suhu di luar rentang 25-45 °C dilewati.
++Aturan penyimpanan bridge: kartu yang belum ada di `patient_cards` otomatis
++didaftarkan (`Users` NIK 16 digit deterministik dari hash hex UID, role R2,
++password `rfid123`, `Name="Pasien <HEX>"`, + `PatientCard`); matikan dengan
++`RFID_AUTO_REGISTER=false`. Suhu di luar rentang 25-45 °C dilewati; duplikat
++pengiriman ulang QoS 1 dilewati. GPIO & sistem kerja: `HARDWARE_DOCUMENTATION.md`.
+ Hasil sensor adalah alat bantu pencatatan, bukan diagnosis medis.
+ 
+ ---

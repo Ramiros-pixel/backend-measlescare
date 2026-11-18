@@ -1,0 +1,145 @@
+--- a/integrasi_sensor/firmware/sensor_publisher.py
++++ b/integrasi_sensor/firmware/sensor_publisher.py
+@@ -0,0 +1,142 @@
++#!/usr/bin/env python3
++"""Publisher sensor kiosk: RFID (MFRC522) + suhu IR (MLX90614) -> MQTT (Mosquitto).
++
++Alur: kartu RFID ditempel -> baca UID -> ukur suhu objek (median N sampel) ->
++publish JSON QoS 1 ke topik `measlescare/<DEVICE_ID>/reading`.
++Subscriber yang menulis ke database: integrasi_sensor/bridge/mqtt_bridge.py.
++
++Jalankan dari root repo:
++    python3 -m integrasi_sensor.firmware.sensor_publisher [--verbose] [--once]
++"""
++
++from __future__ import annotations
++
++import argparse
++import json
++import logging
++import os
++import signal
++import sys
++import time
++import uuid
++from datetime import datetime, timezone
++from pathlib import Path
++
++ROOT = Path(__file__).resolve().parents[2]
++if str(ROOT) not in sys.path:
++    sys.path.insert(0, str(ROOT))
++
++# Import modul setelah sys.path diisi; kesalahan hardware ditunda ke main()
++from integrasi_sensor.firmware.mfrc522 import MFRC522, uid_to_hex
++from integrasi_sensor.firmware.mlx90614 import MLX90614
++
++log = logging.getLogger("sensor-publisher")
++
++
++def _cfg(name: str, default: str) -> str:
++    return os.getenv(name, default)
++
++
++def main(argv: list[str] | None = None) -> int:
++    # dotenv diimpor di sini agar modul tetap bisa diimpor tanpa dependensi
++    from dotenv import load_dotenv
++
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--verbose", action="store_true", help="log debug")
++    parser.add_argument("--once", action="store_true", help="satu pembacaan lalu keluar")
++    args = parser.parse_args(argv)
++
++    logging.basicConfig(
++        level=logging.DEBUG if args.verbose else logging.INFO,
++        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
++    )
++
++    mqtt_host = _cfg("MQTT_HOST", "127.0.0.1")
++    mqtt_port = int(_cfg("MQTT_PORT", "1883"))
++    mqtt_user = _cfg("MQTT_USER", "") or None
++    mqtt_password = _cfg("MQTT_PASSWORD", "") or None
++    device_id = _cfg("DEVICE_ID", "kiosk-01")
++    topic_prefix = _cfg("MQTT_TOPIC_PREFIX", "measlescare")
++    suhu_samples = int(_cfg("SUHU_SAMPLES", "5"))
++    debounce = float(_cfg("RFID_DEBOUNCE_SEC", "2"))
++    i2c_bus = int(_cfg("I2C_BUS", "1"))
++    spi_bus = int(_cfg("SPI_BUS", "0"))
++    spi_device = int(_cfg("SPI_DEVICE", "0"))
++    spi_speed = int(_cfg("SPI_SPEED", "1000000"))
++
++    import paho.mqtt.client as mqtt
++
++    sensor = MLX90614(bus_number=i2c_bus)
++    reader = MFRC522(bus=spi_bus, device=spi_device, speed=spi_speed)
++    log.info("MLX90614 (I2C %d) dan MFRC522 (SPI %d.%d) siap", i2c_bus, spi_bus, spi_device)
++
++    client = mqtt.Client(
++        mqtt.CallbackAPIVersion.VERSION2,
++        client_id=f"publisher-{device_id}-{uuid.uuid4().hex[:8]}",
++    )
++    if mqtt_user:
++        client.username_pw_set(mqtt_user, mqtt_password)
++    client.reconnect_delay_set(min_delay=1, max_delay=30)
++    client.connect(mqtt_host, mqtt_port, keepalive=60)
++    client.loop_start()
++    topic = f"{topic_prefix}/{device_id}/reading"
++    log.info("terhubung ke %s:%d, publish ke %s (QoS 1)", mqtt_host, mqtt_port, topic)
++
++    running = True
++
++    def _stop(_signum, _frame) -> None:
++        nonlocal running
++        running = False
++
++    signal.signal(signal.SIGINT, _stop)
++    signal.signal(signal.SIGTERM, _stop)
++
++    try:
++        while running:
++            uid = reader.read_card_serial()
++            if uid is None:
++                time.sleep(0.3)
++                continue
++
++            rfid_uid = uid_to_hex(uid)
++            log.info("kartu terbaca: %s", rfid_uid)
++            try:
++                suhu = sensor.read_object_median(suhu_samples)
++            except RuntimeError as exc:
++                log.warning("suhu gagal dibaca: %s (kartu dilewati)", exc)
++                reader.halt()
++                time.sleep(debounce)
++                continue
++
++            payload = {
++                "device_id": device_id,
++                "rfid_uid": rfid_uid,
++                "suhu": round(suhu, 2),
++                "sensor": "mlx90614",
++                "ts": datetime.now(timezone.utc).isoformat(),
++            }
++            info = client.publish(topic, json.dumps(payload), qos=1)
++            info.wait_for_publish(timeout=5)
++            log.info("publish %s suhu=%.2f C rc=%s", rfid_uid, suhu, info.rc)
++
++            if args.once:
++                break
++
++            # tunggu kartu dilepas sebelum pembacaan berikutnya
++            reader.halt()
++            t0 = time.monotonic()
++            while running and time.monotonic() - t0 < 10:
++                if reader.read_card_serial() is None:
++                    break
++                time.sleep(0.3)
++            time.sleep(debounce)
++    finally:
++        client.loop_stop()
++        client.disconnect()
++        reader.close()
++        log.info("publisher berhenti")
++    return 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
