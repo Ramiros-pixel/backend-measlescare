@@ -1,0 +1,201 @@
+# Integrasi Sensor — MeaslesCare
+
+Folder ini berisi integrasi sensor kiosk ke backend-measlescare:
+
+- **MLX90614 (GY-906 / HW-691)** — sensor suhu IR non-contact (I2C)
+- **MFRC522 Mini** — pembaca RFID 13.56 MHz (SPI)
+- **MQTT via Mosquitto** — transport pesan sensor ke database
+
+Alur data:
+
+```
+[ MFRC522 ] --SPI--> [ publisher.py ] --MQTT QoS 1--> [ Mosquitto ] --> [ mqtt_bridge.py ] --> MySQL (db_huawei)
+[ MLX90614 ] --I2C--> [ publisher.py ]                       (broker)        (subscriber)
+                                                                                |
+                                                                                v
+                                                          tabel Gejala (kolom Suhu) + patient_cards (rfid_uid -> NIK)
+```
+
+Target hardware: **Raspberry Pi / Orange Pi dengan Python** (bukan ESP32).
+Satu mesin menjalankan publisher (membaca sensor) dan bridge (menulis database)
+sebagai dua proses terpisah; keduanya terhubung ke broker Mosquitto.
+
+## Isi folder
+
+| Path | Fungsi |
+| :--- | :--- |
+| `firmware/mlx90614.py` | Driver I2C MLX90614 (dengan verifikasi PEC) |
+| `firmware/mfrc522.py` | Driver SPI MFRC522 (spidev + RPi.GPIO/OPi.GPIO) |
+| `firmware/sensor_publisher.py` | Loop utama: scan RFID -> ukur suhu -> publish MQTT |
+| `bridge/mqtt_bridge.py` | Subscriber MQTT -> tulis `Gejala` (proses terpisah dari FastAPI) |
+| `requirements.txt` | Dependensi Python (paho-mqtt, smbus2, spidev, SQLAlchemy, dll.) |
+| `config.example.env` | Contoh konfigurasi (salankan ke `config.env` bila perlu) |
+| `../mosquitto/config/mosquitto.conf` | Konfigurasi broker (di-mount ke container mosquitto) |
+
+## Kolom database yang dipakai (tidak ada perubahan ERD)
+
+| Data sensor | Kolom DB | Tabel | Keterangan |
+| :--- | :--- | :--- | :--- |
+| UID kartu RFID | `rfid_uid` | `patient_cards` | dicocokkan untuk mendapatkan `NIK` |
+| Suhu tubuh | `Suhu` | `Gejala` | baris baru per pembacaan, `Batuk = NULL`, `Tanggal` otomatis |
+
+**Auto-registrasi kartu**: kartu yang **belum terdaftar** otomatis dibuatkan
+pasien baru saat terbaca — `Users` (NIK 16 digit deterministik dari hash hex
+UID, `Name = "Pasien <HEX>"`, role `R2`, password `RFID_DEFAULT_PASSWORD`
+default `rfid123`) + `PatientCard`, lalu pembacaan tetap disimpan. Matikan
+dengan `RFID_AUTO_REGISTER=false` (kartu tak dikenal dilewati, hanya log).
+Detail lengkap: `HARDWARE_DOCUMENTATION.md` §4.
+
+## Wiring (header 40-pin, nomor = pin fisik BOARD)
+
+### MLX90614 (GY-906 / HW-691) — I2C
+
+| Modul | Pin board |
+| :--- | :--- |
+| VIN | 3.3V (pin 1 atau 17) |
+| GND | GND (pin 6 atau 9) |
+| SCL | pin 5 |
+| SDA | pin 3 |
+
+Alamat I2C default `0x5A`. Jika pembacaan gagal PEC, tambahkan resistor
+pull-up 4,7 kOhm SCL/SDA ke 3.3V (beberapa modul GY-906 belum ada pull-up).
+
+### MFRC522 Mini — SPI
+
+| Modul | Pin board |
+| :--- | :--- |
+| SDA (SS) | pin 24 (CE0) |
+| SCK | pin 23 |
+| MOSI | pin 19 |
+| MISO | pin 21 |
+| IRQ | (tidak dipakai) |
+| RST | pin 22 |
+| 3.3V | pin 1 atau 17 |
+| GND | pin 6 atau 9 |
+
+> Catatan Orange Pi: header 40-pin umumnya kompatibel secara posisi dengan
+> Raspberry Pi, tapi verifikasi pinout board Anda (`pinout` / `armbian-config`).
+> Pakai **3.3V**, jangan 5V.
+
+## Setup
+
+### 1. Aktifkan I2C dan SPI
+
+```bash
+# Raspberry Pi
+sudo raspi-config        # -> Interface Options -> I2C: enable, SPI: enable
+
+# Orange Pi (Armbian)
+sudo armbian-config      # -> System -> Hardware -> aktifkan i2c dan spidev
+
+# verifikasi
+ls /dev/i2c-1 /dev/spidev0.0
+```
+
+### 2. Install dependensi Python
+
+```bash
+cd backend-measlescare
+python3 -m venv .venv-sensor
+source .venv-sensor/bin/activate
+pip install -r integrasi_sensor/requirements.txt
+```
+
+### 3. Jalankan broker Mosquitto (Docker)
+
+```bash
+docker compose up -d mosquitto
+docker compose ps mosquitto        # harus "Up (healthy)"
+```
+
+Port `1883` terbuka di host. Konfigurasi: `mosquitto/config/mosquitto.conf`.
+
+### 4. Konfigurasi
+
+Semua variabel dibaca dari environment, dengan default aman. Dua sumber otomatis:
+`.env` di root repo, lalu `integrasi_sensor/config.env` (tidak wajib ada).
+Contoh nilai: `integrasi_sensor/config.example.env`.
+
+| Variabel | Default | Dipakai oleh | Keterangan |
+| :--- | :--- | :--- | :--- |
+| `MQTT_HOST` | `127.0.0.1` | publisher & bridge | alamat broker |
+| `MQTT_PORT` | `1883` | publisher & bridge | port broker |
+| `MQTT_USER` / `MQTT_PASSWORD` | kosong | publisher & bridge | autentikasi perangkat |
+| `DEVICE_ID` | `kiosk-01` | publisher | id perangkat di topik & payload |
+| `MQTT_TOPIC_PREFIX` | `measlescare` | publisher | awalan topik |
+| `MQTT_SUBSCRIBE_TOPIC` | `measlescare/+/reading` | bridge | topik subscribe |
+| `SUHU_SAMPLES` | `5` | publisher | jumlah sampel suhu (median) |
+| `RFID_DEBOUNCE_SEC` | `2` | publisher | jeda antar pembacaan |
+| `SUHU_MIN` / `SUHU_MAX` | `25` / `45` | bridge | rentang suhu valid (°C) |
+| `DATABASE_URL` | dari `.env` backend | bridge | koneksi MySQL (default: `db_huawei`) |
+
+### 5. Jalankan bridge (subscriber -> database)
+
+```bash
+# dari root repo; bridge memakai schema & .env yang sama dengan backend
+python3 -m integrasi_sensor.bridge.mqtt_bridge --verbose
+```
+
+### 6. Jalankan publisher (baca sensor)
+
+```bash
+python3 -m integrasi_sensor.firmware.sensor_publisher --verbose
+```
+
+Tempelkan kartu yang sudah terdaftar di `patient_cards` di depan reader, arahkan
+sensor MLX90614 ke dahi (jarak ±3–5 cm), maka satu baris `Gejala` baru tersimpan
+dengan `Suhu` hasil pembacaan. Verifikasi lewat API backend:
+
+```bash
+curl -H "Authorization: Bearer <token admin>" \
+  "http://localhost:8000/api/gejala/history?nik=<NIK>&limit=5"
+```
+
+### Uji cepat tanpa hardware
+
+```bash
+# kirim payload contoh langsung ke topik
+docker compose exec mosquitto mosquitto_pub -t "measlescare/kiosk-01/reading" \
+  -m '{"device_id":"kiosk-01","rfid_uid":"E0040100ABCDEF0001","suhu":36.7,"sensor":"mlx90614","ts":"2026-11-18T15:04:05+00:00"}'
+
+# subscribe untuk melihat pesan
+docker compose exec mosquitto mosquitto_sub -t "measlescare/#" -v
+```
+
+## Topik MQTT
+
+| Topik | Arah | Payload |
+| :--- | :--- | :--- |
+| `measlescare/<DEVICE_ID>/reading` | publisher -> bridge | JSON (contoh di bawah) |
+
+```json
+{
+  "device_id": "kiosk-01",
+  "rfid_uid": "E0040100ABCDEF0001",
+  "suhu": 36.7,
+  "sensor": "mlx90614",
+  "ts": "2026-11-18T15:04:05+00:00"
+}
+```
+
+## Keamanan (data kesehatan!)
+
+Broker default **allow_anonymous** hanya untuk demo jaringan tertutup. Untuk
+produksi, aktifkan autentikasi perangkat:
+
+```bash
+docker compose exec mosquitto \
+  mosquitto_passwd -c /mosquitto/config/passwd kiosk-01
+```
+
+Lalu di `mosquitto/config/mosquitto.conf` ubah:
+
+```
+allow_anonymous false
+password_file /mosquitto/config/passwd
+```
+
+dan set `MQTT_USER`/`MQTT_PASSWORD` di konfigurasi publisher & bridge,
+lalu `docker compose restart mosquitto`.
+
+Catatan: hasil sensor adalah alat bantu pencatatan, bukan diagnosis medis.

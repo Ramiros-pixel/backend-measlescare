@@ -236,6 +236,41 @@ Admin: semua · User: hanya rekaman pada gejala miliknya. Query `limit` sama sep
 
 ---
 
+## Integrasi Sensor (MQTT -> Database)
+
+Bukan endpoint REST — alur data sensor kiosk ke database. Implementasi lengkap
+di folder `integrasi_sensor/` (README di sana), ringkasan:
+
+- **Publisher (firmware)** — `integrasi_sensor/firmware/sensor_publisher.py`,
+  berjalan di Orange Pi / Raspberry Pi: membaca RFID (MFRC522) + suhu IR
+  (MLX90614), publish JSON QoS 1 ke topik `measlescare/<DEVICE_ID>/reading`.
+- **Bridge** — `integrasi_sensor/bridge/mqtt_bridge.py`, proses Python terpisah
+  dari backend FastAPI: subscribe topik `measlescare/+/reading`, memetakan
+  `rfid_uid` -> `NIK` lewat tabel `patient_cards`, lalu menyimpan baris
+  `Gejala` baru (`Suhu` terisi, `Batuk` NULL, `Tanggal` otomatis).
+- **Broker** — service `mosquitto` di `docker-compose.yml` (port 1883).
+
+Contoh payload publisher:
+
+```json
+{
+  "device_id": "kiosk-01",
+  "rfid_uid": "E0040100ABCDEF0001",
+  "suhu": 36.7,
+  "sensor": "mlx90614",
+  "ts": "2026-11-18T15:04:05+00:00"
+}
+```
+
+Aturan penyimpanan bridge: kartu yang belum ada di `patient_cards` otomatis
+didaftarkan (`Users` NIK 16 digit deterministik dari hash hex UID, role R2,
+password `rfid123`, `Name="Pasien <HEX>"`, + `PatientCard`); matikan dengan
+`RFID_AUTO_REGISTER=false`. Suhu di luar rentang 25-45 °C dilewati; duplikat
+pengiriman ulang QoS 1 dilewati. GPIO & sistem kerja: `HARDWARE_DOCUMENTATION.md`.
+Hasil sensor adalah alat bantu pencatatan, bukan diagnosis medis.
+
+---
+
 ## Ringkasan Kode Status
 
 | Kode | Arti |

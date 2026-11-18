@@ -1,0 +1,17 @@
+--- a/integrasi_sensor/README.md
++++ b/integrasi_sensor/README.md
+@@ -39,8 +39,12 @@
+ | UID kartu RFID | `rfid_uid` | `patient_cards` | dicocokkan untuk mendapatkan `NIK` |
+ | Suhu tubuh | `Suhu` | `Gejala` | baris baru per pembacaan, `Batuk = NULL`, `Tanggal` otomatis |
+ 
+-Kartu yang **belum terdaftar** di `patient_cards` tidak menghasilkan baris Gejala
+-(tidak ada NIK) — hanya dicatat di log bridge.
++**Auto-registrasi kartu**: kartu yang **belum terdaftar** otomatis dibuatkan
++pasien baru saat terbaca — `Users` (NIK 16 digit deterministik dari hash hex
++UID, `Name = "Pasien <HEX>"`, role `R2`, password `RFID_DEFAULT_PASSWORD`
++default `rfid123`) + `PatientCard`, lalu pembacaan tetap disimpan. Matikan
++dengan `RFID_AUTO_REGISTER=false` (kartu tak dikenal dilewati, hanya log).
++Detail lengkap: `HARDWARE_DOCUMENTATION.md` §4.
+ 
+ ## Wiring (header 40-pin, nomor = pin fisik BOARD)
+ 

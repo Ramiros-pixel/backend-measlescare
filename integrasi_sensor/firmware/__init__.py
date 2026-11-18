@@ -1,0 +1,1 @@
+"""Firmware Python untuk sensor kiosk (MLX90614 + MFRC522) -> MQTT."""

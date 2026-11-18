@@ -1,0 +1,13 @@
+--- a/integrasi_sensor/config.example.env
++++ b/integrasi_sensor/config.example.env
+@@ -22,5 +22,10 @@
+ MQTT_SUBSCRIBE_TOPIC=measlescare/+/reading
+ SUHU_MIN=25.0
+ SUHU_MAX=45.0
++# Kartu tak dikenal otomatis didaftarkan (Users + patient_cards) saat terbaca.
++# false -> kartu tak dikenal dilewati (hanya log).
++RFID_AUTO_REGISTER=true
++# Password akun pasien yang dibuat otomatis (default: rfid123)
++RFID_DEFAULT_PASSWORD=rfid123
+ # Bila perlu override; default dibaca dari DATABASE_URL di .env root backend
+ # DATABASE_URL=mysql+pymysql://root:***@127.0.0.1:3306/db_huawei

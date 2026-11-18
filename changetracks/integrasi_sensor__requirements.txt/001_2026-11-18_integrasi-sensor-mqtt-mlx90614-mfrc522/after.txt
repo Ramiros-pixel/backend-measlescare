@@ -1,0 +1,9 @@
+# Integrasi sensor (publisher + bridge). Versi dibatasi pada major yang teruji.
+# Publisher (wajib di Orange Pi / Raspberry Pi):
+paho-mqtt>=2.0,<3          # client MQTT
+smbus2>=0.4.3              # I2C (MLX90614)
+spidev>=3.5                # SPI (MFRC522)
+# Bridge (menulis ke MySQL db_huawei, schema sama dengan backend):
+sqlalchemy>=2.0
+pymysql>=1.1
+python-dotenv>=1.0

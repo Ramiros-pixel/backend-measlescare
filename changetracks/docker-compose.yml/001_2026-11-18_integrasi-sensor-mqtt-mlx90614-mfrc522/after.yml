@@ -1,0 +1,65 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: huawei-db
+    restart: unless-stopped
+    # hemat RAM (host cuma 2GB): kecilkan buffer pool, matikan performance_schema
+    command:
+      - --innodb-buffer-pool-size=128MB
+      - --performance-schema=OFF
+    environment:
+      MYSQL_ROOT_PASSWORD: "${DB_ROOT_PW}"
+      MYSQL_DATABASE: db_huawei
+    # tidak dipublish ke host/internet; hanya bisa diakses via network internal compose
+    volumes:
+      - db_data:/var/lib/mysql
+    mem_limit: 512m
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  backend:
+    build: .
+    container_name: huawei-backend
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: "mysql+pymysql://root:${DB_ROOT_PW}@db:3306/db_huawei"
+      SECRET_KEY: "${SECRET_KEY}"
+      ACCESS_TOKEN_EXPIRE_MINUTES: "${ACCESS_TOKEN_EXPIRE_MINUTES}"
+      # API_PREFIX kosong karena funnel mount di /api dan melepas prefix sebelum proxy
+      API_PREFIX: ""
+    ports:
+      - "127.0.0.1:8000:8000"   # loopback saja; publik via Tailscale funnel
+    # dataset & model wajah disimpan di host agar persisten antar rebuild
+    volumes:
+      - ./process-recognation:/app/process-recognation
+    mem_limit: 512m
+
+  # Broker MQTT untuk integrasi sensor (MLX90614 + MFRC522).
+  # Publisher/bridge: integrasi_sensor/ (lihat integrasi_sensor/README.md).
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: huawei-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config:ro
+      - mosquitto_data:/mosquitto/data
+      - mosquitto_log:/mosquitto/log
+    healthcheck:
+      test: ["CMD-SHELL", "mosquitto_sub -h 127.0.0.1 -p 1883 -t '$$SYS/broker/uptime' -C 1 -W 5 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 128m
+
+volumes:
+  db_data:
+  mosquitto_data:
+  mosquitto_log:
