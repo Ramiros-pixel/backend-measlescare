@@ -180,10 +180,12 @@ ATURAN_PAKAR = [
 
 # 3. SEEDER MASTER GEJALA
 
-def seed_master_gejala(db: Session) -> None:
+def seed_master_gejala(db: Session, commit: bool = True) -> None:
     """
     Memasukkan master gejala yang belum tersedia.
     Aman dijalankan berulang kali.
+    Jika commit=True, commit langsung dijalankan.
+    Jika commit=False, flush dijalankan dan commit diserahkan ke pemanggil.
     """
 
     jumlah_baru = 0
@@ -202,7 +204,10 @@ def seed_master_gejala(db: Session) -> None:
             else:
                 jumlah_sudah_ada += 1
 
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
 
         print("\n=== MASTER GEJALA SEEDER ===")
         print(f"Data baru      : {jumlah_baru}")
@@ -210,13 +215,14 @@ def seed_master_gejala(db: Session) -> None:
         print(f"Total master   : {len(MASTER_GEJALA)}")
 
     except Exception:
-        db.rollback()
+        if commit:
+            db.rollback()
         raise
 
 
 # 4. SEEDER ATURAN PAKAR DAN DETAIL ATURAN
 
-def seed_aturan_pakar(db: Session) -> None:
+def seed_aturan_pakar(db: Session, commit: bool = True) -> None:
     """
     Memasukkan aturan IF-THEN dan detail kondisinya.
 
@@ -225,6 +231,8 @@ def seed_aturan_pakar(db: Session) -> None:
 
     Aturan R05A, R05B, dan R05C mewakili OR
     antar tanda bahaya.
+    Jika commit=True, commit langsung dijalankan.
+    Jika commit=False, flush dijalankan dan commit diserahkan ke pemanggil.
     """
 
     jumlah_aturan_baru = 0
@@ -293,7 +301,10 @@ def seed_aturan_pakar(db: Session) -> None:
                     )
                     jumlah_detail_baru += 1
 
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
 
         print("\nATURAN PAKAR SEEDER")
         print(f"Aturan baru   : {jumlah_aturan_baru}")
@@ -302,5 +313,20 @@ def seed_aturan_pakar(db: Session) -> None:
         print("Seeder aturan berhasil.")
 
     except Exception:
-        db.rollback()
+        if commit:
+            db.rollback()
         raise
+
+
+def main() -> None:
+    from app.db.session import SessionLocal
+    db = SessionLocal()
+    try:
+        seed_master_gejala(db)
+        seed_aturan_pakar(db)
+    finally:
+        db.close()
+
+
+if __name__ == "__main__":
+    main()

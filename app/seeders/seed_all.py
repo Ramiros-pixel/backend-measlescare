@@ -12,15 +12,10 @@ Fungsi:
   karena memakai ID tetap (bukan uuid acak) dan tanggal tetap.
 - Idempoten: aman dijalankan berulang kali; tidak menduplikasi / menghapus data.
 
-Data dummy (kredensial untuk login):
-    admin        / admin123    (role Admin)
-    3201234567890002 / rahasia123 (role User, "Bagas Pratama")
-    3201234567890003 / rahasia123 (role User, "Siti Rahayu")
-    3201234567890004 / rahasia123 (role User, "Dewi Lestari")
-
-Catatan: password & secret di-hash bcrypt, sehingga byte hash-nya berbeda antar
-device, tetapi logika data (user, relasi, catatan) tetap identik dan login
-berhasil dengan password yang sama.
+Data dummy (khusus pengujian lokal / demo non-produksi):
+    Akun admin dan user pengujian diinisialisasi untuk kebutuhan evaluasi lokal.
+    Seluruh password dan secret di-hash menggunakan bcrypt sebelum disimpan ke database.
+    Kredensial ini TIDAK BOLEH digunakan pada lingkungan produksi publik.
 """
 
 from datetime import datetime
@@ -297,14 +292,15 @@ def seed_hasil_pakar(db: Session) -> int:
 # ORKESTRATOR
 # ---------------------------------------------------------------------------
 
-def run_all_seeders() -> None:
-    """Jalankan seluruh seeder. Aman diulang (idempoten)."""
+def run_all_seeders(db_session: Session | None = None) -> dict:
+    """Jalankan seluruh seeder dengan pengurutan dependensi aman (idempoten)."""
 
     # 1. Buat tabel yang belum tersedia + migrasi kolom tambahan.
     Base.metadata.create_all(bind=engine)
     migrate_database()
 
-    db = SessionLocal()
+    db = db_session if db_session is not None else SessionLocal()
+    counts = {}
     try:
         def _count(tbl) -> int:
             return db.query(func.count()).select_from(tbl).scalar() or 0
@@ -313,50 +309,59 @@ def run_all_seeders() -> None:
         at_before = _count(AturanPakar)
         det_before = _count(AturanPakarDetail)
 
-        counts = {
-            "Role": seed_roles(db),
-            "Users (admin)": seed_admin(db),
-            "Users (dummy)": seed_users(db),
-            "Gejala": seed_gejala(db),
-            "Camera": seed_camera(db),
-            "Status": seed_status(db),
-            "PatientCard": seed_patient_cards(db),
-            "KioskDevice": seed_kiosk_device(db),
-            "JawabanGejala": seed_jawaban_gejala(db),
-            "HasilPakar": seed_hasil_pakar(db),
-        }
+        # Tahap 1: Role (Prasyarat Users)
+        counts["Role"] = seed_roles(db)
+        db.flush()
 
-        # Master gejala & aturan pakar mencetak ringkasannya sendiri;
-        # hitung delta tabel agar laporan di bawah konsisten.
-        seed_master_gejala(db)
-        seed_aturan_pakar(db)
+        # Tahap 2: Users (Admin & Dummy Patients - Prasyarat Gejala & PatientCard)
+        counts["Users (admin)"] = seed_admin(db)
+        counts["Users (dummy)"] = seed_users(db)
+        db.flush()
+
+        # Tahap 3: Master Gejala & Aturan Pakar (Prasyarat JawabanGejala & AturanPakarDetail)
+        seed_master_gejala(db, commit=False)
+        seed_aturan_pakar(db, commit=False)
         counts["MasterGejala"] = _count(MasterGejala) - mg_before
         counts["AturanPakar+Detail"] = (
             (_count(AturanPakar) - at_before)
             + (_count(AturanPakarDetail) - det_before)
         )
+
+        # Tahap 4: Gejala (Prasyarat Camera, JawabanGejala, HasilPakar)
+        counts["Gejala"] = seed_gejala(db)
+        db.flush()
+
+        # Tahap 5: Camera, PatientCards, KioskDevice
+        counts["Camera"] = seed_camera(db)
+        db.flush()
+        counts["Status"] = seed_status(db)
+        counts["PatientCard"] = seed_patient_cards(db)
+        counts["KioskDevice"] = seed_kiosk_device(db)
+        db.flush()
+
+        # Tahap 6: Jawaban Gejala & Hasil Pakar (Tabel anak dari Gejala & MasterGejala)
+        counts["JawabanGejala"] = seed_jawaban_gejala(db)
+        counts["HasilPakar"] = seed_hasil_pakar(db)
         db.commit()
     except Exception:
         db.rollback()
         raise
     finally:
-        db.close()
+        if db_session is None:
+            db.close()
 
     print("\n=== SEEDER DATA LENGKAP MEASLESCARE ===")
     print("Status: idempoten (baru ditambahkan = >0, sudah ada = 0).")
     for nama, jumlah in counts.items():
         print(f"{nama:<24}: {jumlah} baris baru")
-    print("\nKredensial dummy:")
-    print("  admin / admin123")
+    print("\nStatus Kredensial Dummy (Khusus Pengujian Non-Produksi):")
+    print("  [OK] Akun Administrator lokal dikonfigurasi (password terenkripsi bcrypt).")
     for u in DUMMY_USERS:
-        print(f"  {u['NIK']} / {u['password']}  ({u['Name']})")
-    print(
-        "\nKiosk secret:",
-        DUMMY_KIOSK["secret"],
-        "| device_id:",
-        DUMMY_KIOSK["id_device"],
-    )
+        print(f"  [OK] Akun Pasien {u['Name']} (NIK: {u['NIK']}) dikonfigurasi (password terenkripsi bcrypt).")
+    print(f"  [OK] Perangkat Kiosk Demo terdaftar (device_id: {DUMMY_KIOSK['id_device']}, secret terenkripsi).")
+    print("  Catatan Keamanan: Kredensial dummy hanya untuk pengujian lokal/demo internal non-produksi.")
     print("Seeder selesai.")
+    return counts
 
 
 def main() -> None:

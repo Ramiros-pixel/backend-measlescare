@@ -12,11 +12,15 @@ __pycache__/
 
 # Dataset wajah dan data biometrik
 process-recognition/dataset/
+process-recognation/dataset/
 
 # Model hasil training
 process-recognition/*.yml
 process-recognition/*.yaml
 process-recognition/*.onnx
+process-recognation/*.yml
+process-recognation/*.yaml
+process-recognation/*.onnx
 
 # Cache dan file sementara
 .vscode/
