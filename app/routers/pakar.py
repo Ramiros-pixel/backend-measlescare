@@ -7,7 +7,7 @@ from sqlalchemy import delete, select
 from app.core.security import DbSession, get_current_user, is_admin
 
 from app.models.gejala import Gejala, User
-from app.routers.kiosk_session import _session_from_token
+from app.routers.kiosk_session import _device_from_key, _session_from_token
 from app.models.pakar import (
     MasterGejala,
     JawabanGejala,
@@ -27,10 +27,12 @@ def _resolve_pakar_user(
     db,
     authorization: str | None,
     kiosk_session_token: str | None,
+    x_kiosk_key: str | None = None,
 ) -> User:
     """Terima JWT user/admin atau token sesi kiosk yang valid."""
     if kiosk_session_token:
-        _session, nik = _session_from_token(db, kiosk_session_token)
+        calling_device = _device_from_key(db, x_kiosk_key)
+        _session, nik = _session_from_token(db, kiosk_session_token, calling_device=calling_device)
         user = db.get(User, nik)
         if user is None:
             raise HTTPException(status_code=401, detail="Pasien sesi tidak ditemukan")
@@ -46,8 +48,9 @@ def get_pakar_user(
     db: DbSession,
     authorization: str | None = Header(default=None, alias="Authorization"),
     kiosk_session_token: str | None = Header(default=None, alias="X-Kiosk-Session"),
+    x_kiosk_key: str | None = Header(default=None, alias="X-Kiosk-Key"),
 ) -> User:
-    return _resolve_pakar_user(db, authorization, kiosk_session_token)
+    return _resolve_pakar_user(db, authorization, kiosk_session_token, x_kiosk_key)
 
 
 

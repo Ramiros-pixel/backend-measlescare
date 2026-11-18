@@ -11,7 +11,9 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.config import settings
 from app.core.security import DbSession
-from app.models.gejala import User, PatientCard
+from app.models.gejala import User, PatientCard, KioskDevice
+from app.routers.kiosk_session import _device_from_key
+from app.core.rate_limit import rate_limit_rfid
 from app.routers.face import _decode_frame
 from app.services import face_engine
 from app.services.face_engine import SAMPLE_TARGET
@@ -19,14 +21,20 @@ from app.services.face_engine import SAMPLE_TARGET
 router = APIRouter(prefix="/kiosk", tags=["Kiosk"])
 
 
-def verify_kiosk_key(x_kiosk_key: str | None = Header(default=None)):
-    expected = settings.KIOSK_API_KEY
-    if not expected or not x_kiosk_key or not hmac.compare_digest(x_kiosk_key, expected):
-        raise HTTPException(status_code=401, detail="Kiosk tidak terautentikasi")
+def verify_kiosk_device(
+    db: DbSession,
+    x_kiosk_key: str | None = Header(default=None, alias="X-Kiosk-Key"),
+) -> KioskDevice:
+    """Unifikasi autentikasi perangkat kiosk berbasis database KioskDevice."""
+    return _device_from_key(db, x_kiosk_key)
 
 
 class IdentifyRFIDIn(BaseModel):
     rfid_uid: str = Field(min_length=2, max_length=64)
+
+
+class FaceIdentifyIn(BaseModel):
+    image: str = Field(min_length=20, description="Citra frame wajah (base64 JPEG/PNG)")
 
 
 class PatientOut(BaseModel):
@@ -38,6 +46,7 @@ class PatientOut(BaseModel):
     Alamat: str | None = None
     face_samples: int
     face_target: int
+    confidence: float | None = None
 
 
 class EmailIn(BaseModel):
@@ -60,7 +69,7 @@ class FaceCaptureIn(BaseModel):
 class PatientNIKIn(BaseModel):
     NIK: str = Field(min_length=16, max_length=16)
 
-@router.post("/identify-rfid", response_model=PatientOut, dependencies=[Depends(verify_kiosk_key)])
+@router.post("/identify-rfid", response_model=PatientOut, dependencies=[Depends(verify_kiosk_device), Depends(rate_limit_rfid)])
 def identify_rfid(payload: IdentifyRFIDIn, db: DbSession):
     card = db.query(PatientCard).filter(PatientCard.rfid_uid == payload.rfid_uid.strip().upper()).first()
     if card is None:
@@ -75,7 +84,24 @@ def identify_rfid(payload: IdentifyRFIDIn, db: DbSession):
     )
 
 
-@router.post("/email", dependencies=[Depends(verify_kiosk_key)])
+@router.post("/identify-face", response_model=PatientOut, dependencies=[Depends(verify_kiosk_device), Depends(rate_limit_rfid)])
+def identify_face(payload: FaceIdentifyIn, db: DbSession):
+    frame = _decode_frame(payload.image)
+    result = face_engine.recognize(frame)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Wajah tidak dikenali atau belum terdaftar")
+    user = db.get(User, result["user_id"])
+    if user is None or user.id_Role != "R2":
+        raise HTTPException(status_code=404, detail="Data pasien untuk wajah ini tidak ditemukan")
+    return PatientOut(
+        NIK=user.NIK, Name=user.Name, Tempat_Tgl_Lahir=user.Tempat_Tgl_Lahir,
+        Golongan_darah=user.Golongan_darah, Email=user.Email, Alamat=user.Alamat,
+        face_samples=face_engine.count_samples(user.NIK), face_target=SAMPLE_TARGET,
+        confidence=result.get("confidence"),
+    )
+
+
+@router.post("/email", dependencies=[Depends(verify_kiosk_device)])
 def save_email(payload: EmailIn, db: DbSession):
     user = db.get(User, payload.NIK)
     if user is None or user.id_Role != "R2":
@@ -92,7 +118,7 @@ def save_email(payload: EmailIn, db: DbSession):
     return {"success": True, "Email": user.Email}
 
 
-@router.post("/face/recognize", dependencies=[Depends(verify_kiosk_key)])
+@router.post("/face/recognize", dependencies=[Depends(verify_kiosk_device)])
 def kiosk_face_recognize(payload: FaceCaptureIn, db: DbSession):
     user = db.get(User, payload.NIK)
     if user is None or user.id_Role != "R2":
@@ -110,7 +136,7 @@ def kiosk_face_recognize(payload: FaceCaptureIn, db: DbSession):
     }
 
 
-@router.post("/face/capture", dependencies=[Depends(verify_kiosk_key)])
+@router.post("/face/capture", dependencies=[Depends(verify_kiosk_device)])
 def kiosk_face_capture(payload: FaceCaptureIn, db: DbSession):
     user = db.get(User, payload.NIK)
     if user is None or user.id_Role != "R2":
@@ -125,7 +151,7 @@ def kiosk_face_capture(payload: FaceCaptureIn, db: DbSession):
     }
 
 
-@router.post("/face/train", dependencies=[Depends(verify_kiosk_key)])
+@router.post("/face/train", dependencies=[Depends(verify_kiosk_device)])
 def kiosk_face_train(payload: PatientNIKIn, db: DbSession):
     user = db.get(User, payload.NIK)
     if user is None or user.id_Role != "R2":

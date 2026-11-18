@@ -22,4 +22,8 @@ class Settings:
     ACCESS_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "120"))
     KIOSK_API_KEY: str = os.getenv("KIOSK_API_KEY", "")
 
+    # Rate Limiting Kiosk (Permintaan per menit)
+    RATE_LIMIT_RFID_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_RFID_PER_MINUTE", "60"))
+    RATE_LIMIT_SESSION_CREATE_PER_MINUTE: int = int(os.getenv("RATE_LIMIT_SESSION_CREATE_PER_MINUTE", "30"))
+
 settings = Settings()

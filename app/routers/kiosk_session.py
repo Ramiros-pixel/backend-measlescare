@@ -4,11 +4,12 @@ import secrets
 import uuid
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.security import DbSession, verify_password
+from app.core.rate_limit import rate_limit_session_create
 from app.models.gejala import Gejala, User
 from app.models.kiosk_session import KioskDevice, KioskSession
 from app.routers.face import _decode_frame
@@ -20,6 +21,10 @@ router = APIRouter(prefix="/kiosk-session", tags=["Kiosk Session"])
 class CreateSessionIn(BaseModel):
     NIK: str = Field(min_length=16, max_length=16)
     image: str = Field(min_length=20)
+
+
+class IdentifyFaceSessionIn(BaseModel):
+    image: str = Field(min_length=20, description="Citra wajah pasien base64 JPEG/PNG")
 
 
 class CreateGejalaIn(BaseModel):
@@ -37,7 +42,11 @@ def _device_from_key(db: Session, x_kiosk_key: str | None) -> KioskDevice:
     raise HTTPException(status_code=401, detail="Kunci perangkat kiosk tidak valid")
 
 
-def _session_from_token(db: Session, token: str | None) -> tuple[KioskSession, str]:
+def _session_from_token(
+    db: Session,
+    token: str | None,
+    calling_device: KioskDevice | None = None,
+) -> tuple[KioskSession, str]:
     if not token:
         raise HTTPException(status_code=401, detail="Sesi kiosk tidak ditemukan")
 
@@ -62,10 +71,19 @@ def _session_from_token(db: Session, token: str | None) -> tuple[KioskSession, s
     device = db.get(KioskDevice, session.id_device)
     if device is None or not device.aktif:
         raise HTTPException(status_code=401, detail="Perangkat kiosk tidak aktif")
+
+    # Session Device Binding: Validasi bahwa sesi digunakan oleh perangkat pembuatnya
+    if calling_device is not None:
+        if session.id_device != calling_device.id_device:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Sesi tidak terikat pada perangkat kiosk ini",
+            )
+
     return session, nik
 
 
-@router.post("/create")
+@router.post("/create", dependencies=[Depends(rate_limit_session_create)])
 def create_kiosk_session(
     payload: CreateSessionIn,
     db: DbSession,
@@ -106,13 +124,77 @@ def create_kiosk_session(
     }
 
 
+@router.post("/identify-face", dependencies=[Depends(rate_limit_session_create)])
+def identify_face_and_create_session(
+    payload: IdentifyFaceSessionIn,
+    db: DbSession,
+    x_kiosk_key: str | None = Header(default=None, alias="X-Kiosk-Key"),
+):
+    """
+    Identifikasi pasien langsung dari citra wajah (OpenCV LBPH) server-side
+    dan langsung menerbitkan sesi kiosk jika wajah dikenali dan terdaftar.
+    Tidak menerima klaim NIK dari client (anti-spoofing).
+    """
+    device = _device_from_key(db, x_kiosk_key)
+
+    frame = _decode_frame(payload.image)
+    result = face_engine.recognize(frame)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Wajah tidak dikenali atau belum terdaftar",
+        )
+
+    recognized_nik = result["user_id"]
+    confidence = result["confidence"]
+
+    patient = db.get(User, recognized_nik)
+    if patient is None or patient.id_Role != "R2":
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pasien hasil pengenalan wajah tidak ditemukan atau bukan pasien terdaftar",
+        )
+
+    session_id = str(uuid.uuid4())
+    secret = secrets.token_urlsafe(32)
+    token = f"{session_id}|{patient.NIK}|{secret}"
+    token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    row = KioskSession(
+        id_session=session_id,
+        id_device=device.id_device,
+        token_hash=token_hash,
+        expires_at=datetime.utcnow() + timedelta(minutes=20),
+        revoked=False,
+    )
+    db.add(row)
+    db.commit()
+
+    return {
+        "access_token": token,
+        "token_type": "Kiosk",
+        "expires_in": 1200,
+        "patient": {
+            "NIK": patient.NIK,
+            "Name": patient.Name,
+            "Tempat_Tgl_Lahir": patient.Tempat_Tgl_Lahir,
+            "Golongan_darah": patient.Golongan_darah,
+            "Email": patient.Email,
+            "Alamat": patient.Alamat,
+        },
+        "confidence": confidence,
+    }
+
+
 @router.post("/gejala", status_code=201)
 def create_gejala_from_kiosk(
     payload: CreateGejalaIn,
     db: DbSession,
     x_kiosk_session: str | None = Header(default=None, alias="X-Kiosk-Session"),
+    x_kiosk_key: str | None = Header(default=None, alias="X-Kiosk-Key"),
 ):
-    _session, nik = _session_from_token(db, x_kiosk_session)
+    calling_device = _device_from_key(db, x_kiosk_key)
+    _session, nik = _session_from_token(db, x_kiosk_session, calling_device=calling_device)
 
     patient = db.get(User, nik)
     if patient is None or patient.id_Role != "R2":
@@ -128,3 +210,18 @@ def create_gejala_from_kiosk(
     db.commit()
     db.refresh(row)
     return row
+
+
+@router.post("/revoke")
+def revoke_kiosk_session(
+    db: DbSession,
+    x_kiosk_session: str | None = Header(default=None, alias="X-Kiosk-Session"),
+    x_kiosk_key: str | None = Header(default=None, alias="X-Kiosk-Key"),
+):
+    """Cabut / tutup sesi kiosk aktif."""
+    calling_device = _device_from_key(db, x_kiosk_key)
+    session, _nik = _session_from_token(db, x_kiosk_session, calling_device=calling_device)
+    session.revoked = True
+    db.commit()
+    return {"message": "Sesi kiosk berhasil ditutup", "revoked": True}
+
