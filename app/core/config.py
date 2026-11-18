@@ -13,7 +13,7 @@ class Settings:
 
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL",
-        "mysql+pymysql://root:bagas_1911@127.0.0.1:3306/db_huawei",
+        "mysql+pymysql://root:orangepi@127.0.0.1:3306/db_huawei",
     )
 
     # Keamanan JWT

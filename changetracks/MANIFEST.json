@@ -1,7 +1,7 @@
 {
   "project": "backend-measlescare",
   "convention": "1 folder per file; subfolder per prompt",
-  "updated_at": "2026-11-16T00:33:49+07:00",
+  "updated_at": "2026-11-18T17:04:11+00:00",
   "tracks": [
     {
       "file": "AGENTS.md",
@@ -72,6 +72,13 @@
       "summary": "e2e-integration-tests-app-main",
       "prompt": "PROMPT 26 — PHASE 4: MAIN APPLICATION INTEGRATION & END-TO-END VERIFICATION - Implementasi 16 skenario pengujian End-to-End pada app.main (Startup, Rute, HTTP Inference riil, Negative Testing 400/413/415/422/500/503, Regresi Rute Lama, dan Akses Publik tanpa JWT).",
       "at": "2026-11-16T00:33:49+07:00"
+    },
+    {
+      "file": "app/seeders/seed_all.py",
+      "folder": "app__seeders__seed_all.py/001_2026-11-18_tambah-seeder-data-lengkap-dummy",
+      "summary": "tambah-seeder-data-lengkap-dummy",
+      "prompt": "Buatkan seeder data agar backend-measlescare bisa di-run dengan data yang sama pada device manapun dengan data dummy.",
+      "at": "2026-11-18T17:04:11+00:00"
     }
   ]
 }
