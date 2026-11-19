@@ -1,7 +1,11 @@
 """Driver modul RFID MFRC522 Mini (13.56 MHz, SPI) untuk Raspberry Pi / Orange Pi.
 
 Port ringkas dari implementasi publik MFRC522-python (mxgxw) dengan abstraksi
-GPIO: memakai `RPi.GPIO` (Raspberry Pi) dan otomatis `OPi.GPIO` (Orange Pi).
+GPIO multi-platform:
+- Linux kernel chardev gpiod (Orange Pi 4 Pro / Allwinner A733 / Ubuntu 22.04)
+- RPi.GPIO (Raspberry Pi)
+- OPi.GPIO (Orange Pi legacy)
+
 Modul `spidev` dan pustaka GPIO diimpor saat inisialisasi agar berkas tetap
 bisa diimpor di mesin tanpa hardware.
 """
@@ -18,10 +22,10 @@ else:
 
 try:  # pragma: no cover
     import RPi.GPIO as GPIO
-except ImportError:
+except (ImportError, RuntimeError):
     try:
         import OPi.GPIO as GPIO
-    except ImportError:
+    except (ImportError, RuntimeError):
         GPIO = None
 
 # Pin fisik (mode BOARD) — sesuaikan bila pinout board Anda berbeda.
@@ -83,61 +87,158 @@ def uid_to_hex(uid: list[int]) -> str:
 class _RstGpio:
     """Kontrol pin RST MFRC522.
 
-    Backend prioritas: gpiod (chardev kernel, bekerja di Sunxi/Allwinner tanpa
-    tabel papan seperti OPi.GPIO). Fallback: RPi.GPIO / OPi.GPIO mode BOARD
-    (Raspberry Pi).
+    Backend prioritas:
+    1. gpiod (Linux kernel chardev GPIO /dev/gpiochip*).
+       Mendukung libgpiod v1.x (Ubuntu 22.04 LTS python3-libgpiod 1.6.3)
+       dan libgpiod v2.x (gpiod.request_lines).
+    2. RPi.GPIO / OPi.GPIO (fallback untuk Raspberry Pi / legacy SBC).
     """
 
     def __init__(self, pin_rst: int) -> None:
         import os
 
+        self._backend: str | None = None
         self._gpio = None
-        self._gpiod_line = None
+        self._pin: int | None = None
+        self._chip = None
+        self._gpiod_v1_line = None
+        self._gpiod_v2_req = None
+        self._gpiod_v2_line: int | None = None
+
         chip_path = os.getenv("MFRC522_RST_CHIP", DEFAULT_RST_CHIP)
         line_no = int(os.getenv("MFRC522_RST_LINE", str(DEFAULT_RST_LINE)))
+
+        # 1. Coba backend gpiod (prioritas utama pada Linux SBC modern seperti Orange Pi 4 Pro)
         try:
             import gpiod
+            gpiod_available = True
+        except ImportError:
+            gpiod_available = False
 
-            chip = gpiod.Chip(chip_path)
-            line = chip.get_line(line_no)
-            line.request(
-                consumer="mfrc522-rst",
-                type=gpiod.LINE_REQ_DIR_OUT,
-                default_vals=[1],
-            )
-            self._gpiod_line = line
-            self._chip = chip
-        except (ImportError, OSError, PermissionError):
-            # Fallback lama untuk Raspberry Pi (RPi.GPIO) / Orange Pi (OPi.GPIO)
-            if GPIO is None:
+        if gpiod_available:
+            try:
+                chip = gpiod.Chip(chip_path)
+                self._chip = chip
+
+                if hasattr(chip, "get_line"):
+                    # API gpiod v1.x (Ubuntu 22.04 LTS python3-libgpiod 1.6.3)
+                    line = chip.get_line(line_no)
+                    line.request(
+                        consumer="mfrc522-rst",
+                        type=gpiod.LINE_REQ_DIR_OUT,
+                        default_vals=[1],
+                    )
+                    self._gpiod_v1_line = line
+                    self._backend = "gpiod_v1"
+                    return
+                elif hasattr(chip, "request_lines"):
+                    # API gpiod v2.x
+                    try:
+                        from gpiod.line import Direction, Value
+                        line_settings = gpiod.LineSettings(
+                            direction=Direction.OUTPUT,
+                            output_value=Value.ACTIVE
+                        )
+                        req = chip.request_lines(
+                            consumer="mfrc522-rst",
+                            config={line_no: line_settings}
+                        )
+                    except Exception:
+                        req = chip.request_lines(
+                            consumer="mfrc522-rst",
+                            lines=[line_no],
+                        )
+                    self._gpiod_v2_req = req
+                    self._gpiod_v2_line = line_no
+                    self._backend = "gpiod_v2"
+                    return
+                else:
+                    raise RuntimeError(f"API gpiod tidak dikenali pada chip: {chip}")
+
+            except PermissionError as exc:
+                self.cleanup()
+                raise PermissionError(
+                    f"Akses ke chip GPIO '{chip_path}' ditolak ({exc}). "
+                    f"Pastikan user '{os.getenv('USER', 'orangepi')}' telah ditambahkan ke group 'gpio': "
+                    f"sudo usermod -aG gpio $USER lalu login ulang."
+                ) from exc
+            except OSError as exc:
+                self.cleanup()
+                raise OSError(
+                    f"Gagal menginisialisasi pin RST via gpiod ({chip_path}, line {line_no}): {exc}. "
+                    f"Periksa apakah pin sedang digunakan proses lain atau device node tersedia."
+                ) from exc
+
+        # 2. Coba fallback RPi.GPIO / OPi.GPIO (hanya jika gpiod tidak terpasang)
+        if GPIO is not None:
+            try:
+                GPIO.setmode(GPIO.BOARD)
+                GPIO.setup(pin_rst, GPIO.OUT)
+                GPIO.output(pin_rst, 1)
+                self._gpio = GPIO
+                self._pin = pin_rst
+                self._backend = "gpio"
+                return
+            except Exception as exc:
+                self.cleanup()
                 raise RuntimeError(
-                    "tidak ada backend GPIO: gpiod (apt install python3-libgpiod) "
-                    "atau RPi.GPIO / OPi.GPIO"
-                )
-            GPIO.setmode(GPIO.BOARD)
-            GPIO.setup(pin_rst, GPIO.OUT)
-            GPIO.output(pin_rst, 1)
-            self._gpio = GPIO
-            self._pin = pin_rst
+                    f"Fallback GPIO (mode BOARD, pin {pin_rst}) gagal: {exc}"
+                ) from exc
+
+        # 3. Tidak ada backend yang tersedia
+        raise RuntimeError(
+            "Tidak ada pustaka GPIO yang dapat digunakan untuk mengontrol pin RST MFRC522. "
+            "Untuk Orange Pi 4 Pro / Ubuntu 22.04: pasang python3-libgpiod (sudo apt install -y python3-libgpiod). "
+            "Untuk Raspberry Pi: pasang RPi.GPIO (pip install RPi.GPIO)."
+        )
 
     def output_high(self) -> None:
-        if self._gpiod_line is not None:
-            self._gpiod_line.set_value(1)
-        elif self._gpio is not None:
+        """Kirim sinyal HIGH ke pin RST."""
+        if self._gpiod_v1_line is not None:
+            self._gpiod_v1_line.set_value(1)
+        elif self._gpiod_v2_req is not None and self._gpiod_v2_line is not None:
+            try:
+                from gpiod.line import Value
+                self._gpiod_v2_req.set_value(self._gpiod_v2_line, Value.ACTIVE)
+            except Exception:
+                self._gpiod_v2_req.set_value(self._gpiod_v2_line, 1)
+        elif self._gpio is not None and self._pin is not None:
             self._gpio.output(self._pin, 1)
 
     def cleanup(self) -> None:
-        if self._gpiod_line is not None:
+        """Lepaskan seluruh resource GPIO secara aman dan idempoten."""
+        if self._gpiod_v1_line is not None:
             try:
-                self._gpiod_line.release()
+                self._gpiod_v1_line.release()
+            except Exception:
+                pass
+            self._gpiod_v1_line = None
+
+        if self._gpiod_v2_req is not None:
+            try:
+                self._gpiod_v2_req.release()
+            except Exception:
+                pass
+            self._gpiod_v2_req = None
+
+        if self._chip is not None:
+            try:
                 self._chip.close()
             except Exception:
                 pass
-        elif self._gpio is not None:
+            self._chip = None
+
+        if self._gpio is not None:
             try:
-                self._gpio.cleanup()
+                if self._pin is not None:
+                    self._gpio.cleanup(self._pin)
+                else:
+                    self._gpio.cleanup()
             except Exception:
                 pass
+            self._gpio = None
+            self._pin = None
+        self._backend = None
 
 
 class MFRC522:
@@ -161,20 +262,24 @@ class MFRC522:
             raise RuntimeError(
                 "modul 'spidev' belum terpasang. Jalankan: "
                 "pip install -r integrasi_sensor/requirements.txt "
-                "dan pastikan SPI aktif (/dev/spidev0.0 ada)."
+                "dan pastikan SPI aktif (/dev/spidev* ada)."
             ) from _SPI_ERROR
-        if GPIO is None:
-            raise RuntimeError(
-                "pustaka GPIO tidak tersedia (butuh RPi.GPIO atau OPi.GPIO). "
-                "pip install RPi.GPIO  (atau: pip install OPi.GPIO di Orange Pi)"
-            )
-        self._spi = spidev.SpiDev()
-        self._spi.open(bus, device)
-        self._spi.max_speed_hz = speed
+
+        self._spi = None
+        self._rst_gpio = None
         self._rst = pin_rst
-        self._rst_gpio = _RstGpio(pin_rst)
-        self._rst_gpio.output_high()
-        self._init()
+
+        try:
+            self._spi = spidev.SpiDev()
+            self._spi.open(bus, device)
+            self._spi.max_speed_hz = speed
+
+            self._rst_gpio = _RstGpio(pin_rst)
+            self._rst_gpio.output_high()
+            self._init()
+        except Exception:
+            self.close()
+            raise
 
     # ---------- low level ----------
     def _write(self, addr: int, value: int) -> None:
@@ -262,7 +367,17 @@ class MFRC522:
         return uid[:4]
 
     def close(self) -> None:
-        """Tutup SPI dan bersihkan GPIO."""
-        self._spi.close()
-        if self._rst_gpio is not None:
-            self._rst_gpio.cleanup()
+        """Tutup SPI dan bersihkan GPIO secara aman dan idempoten."""
+        if hasattr(self, "_spi") and self._spi is not None:
+            try:
+                self._spi.close()
+            except Exception:
+                pass
+            self._spi = None
+
+        if hasattr(self, "_rst_gpio") and self._rst_gpio is not None:
+            try:
+                self._rst_gpio.cleanup()
+            except Exception:
+                pass
+            self._rst_gpio = None

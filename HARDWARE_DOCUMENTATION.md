@@ -8,8 +8,12 @@ Dokumentasi hardware & sistem kerja integrasi sensor kiosk: **GPIO tiap sensor**
 | Sensor suhu | MLX90614 (GY-906 / HW-691) — IR non-contact, I2C |
 | Sensor RFID | MFRC522 Mini — 13.56 MHz, SPI |
 | Board target | Raspberry Pi / Orange Pi 4 Pro (Allwinner A733, header 40-pin) |
-| Transport data | MQTT QoS 1 via broker Mosquitto (Docker) |
+| Transport data | MQTT QoS 1 via broker Mosquitto (Docker / native) |
 | Penerima data | `integrasi_sensor/bridge/mqtt_bridge.py` → MySQL `db_huawei` |
+
+> [!IMPORTANT]
+> **Status Verifikasi Hardware:**
+> Pemetaan pin header 40-pin Orange Pi 4 Pro (Allwinner A733) di bawah ini merupakan konfigurasi device-tree kernel Linux 6.6 (`sun60iw2`) melalui overlay `i2c0` dan `spi3-cs0-cs1-spidev`. Pemetaan ini **berstatus perlu verifikasi lebih lanjut terhadap skematik resmi board dan pengukuran tegangan fisik sebelum implementasi produksi**. Pada audit Phase 4, pengujian software dan integrasi MQTT berhasil (PASS), namun sensor fisik MLX90614 dan reader MFRC522 **belum terdeteksi secara fisik** (jalur I2C 0.0V / SPI register 0x37 mengembalikan `0xFF`). Jangan mengklaim sensor fisik berfungsi sebelum pengujian langsung di board membuktikan pembacaan nyata.
 
 ---
 
@@ -80,12 +84,16 @@ sudo usermod -aG i2c,gpio orangepi      # lalu login ulang
 # Aturan udev: /etc/udev/rules.d/90-sensor-permissions.rules
 #   (gpiochip* + spidev -> group gpio, i2c-dev -> group i2c)
 
-# 3) Backend GPIO untuk pin RST MFRC522 (OPI 4 Pro):
-sudo apt-get install -y python3-libgpiod
+# 3) Paket sistem Ubuntu (APT) untuk backend GPIO gpiod & diagnosa I2C
+sudo apt update && sudo apt install -y python3-libgpiod libgpiod2 i2c-tools
 
-# 4) Dependensi Python
+# 4) Virtual Environment Python (wajib gunakan --system-site-packages agar gpiod terbaca)
+python3 -m venv --system-site-packages .venv-sensor
+source .venv-sensor/bin/activate
+
+# 5) Dependensi Python (pip)
 cd backend-measlescare
-pip install -r integrasi_sensor/requirements.txt   # di venv yang dipakai
+pip install -r integrasi_sensor/requirements.txt
 ```
 
 ### 2.2 Urutan menjalankan

@@ -155,11 +155,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--verbose", action="store_true", help="log debug")
     args = parser.parse_args(argv)
 
-    # baca konfigurasi .env (root backend lalu folder integrasi) sebelum env dipakai
+    # Prioritas konfigurasi:
+    # 1. Environment variable sistem (tidak dioverride, override=False)
+    # 2. integrasi_sensor/config.env (konfigurasi lokal integrasi sensor)
+    # 3. .env root backend (hanya mengisi variabel yang belum tersedia)
     from dotenv import load_dotenv
 
-    load_dotenv(ROOT / ".env")
-    load_dotenv(ROOT / "integrasi_sensor" / "config.env")
+    load_dotenv(ROOT / "integrasi_sensor" / "config.env", override=False)
+    load_dotenv(ROOT / ".env", override=False)
 
     logging.basicConfig(
         level=logging.DEBUG if args.verbose else logging.INFO,

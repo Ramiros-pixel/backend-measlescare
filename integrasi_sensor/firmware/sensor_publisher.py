@@ -41,9 +41,12 @@ def main(argv: list[str] | None = None) -> int:
     # dotenv diimpor di sini agar modul tetap bisa diimpor tanpa dependensi
     from dotenv import load_dotenv
 
-    # Baca konfigurasi: .env root backend dulu, lalu config.env integrasi (menang)
-    load_dotenv(ROOT / ".env")
-    load_dotenv(ROOT / "integrasi_sensor" / "config.env")
+    # Prioritas konfigurasi:
+    # 1. Environment variable sistem (tidak dioverride, override=False)
+    # 2. integrasi_sensor/config.env (konfigurasi lokal integrasi sensor)
+    # 3. .env root backend (hanya mengisi variabel yang belum tersedia)
+    load_dotenv(ROOT / "integrasi_sensor" / "config.env", override=False)
+    load_dotenv(ROOT / ".env", override=False)
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verbose", action="store_true", help="log debug")
@@ -70,8 +73,18 @@ def main(argv: list[str] | None = None) -> int:
 
     import paho.mqtt.client as mqtt
 
-    sensor = MLX90614(bus_number=i2c_bus)
-    reader = MFRC522(bus=spi_bus, device=spi_device, speed=spi_speed)
+    try:
+        sensor = MLX90614(bus_number=i2c_bus)
+    except Exception as exc:
+        log.error("Sensor suhu MLX90614 gagal diinisialisasi pada I2C bus %d: %s", i2c_bus, exc)
+        return 1
+
+    try:
+        reader = MFRC522(bus=spi_bus, device=spi_device, speed=spi_speed)
+    except Exception as exc:
+        log.error("Reader RFID MFRC522 gagal diinisialisasi pada SPI bus %d.%d: %s", spi_bus, spi_device, exc)
+        return 1
+
     log.info("MLX90614 (I2C %d) dan MFRC522 (SPI %d.%d) siap", i2c_bus, spi_bus, spi_device)
 
     client = mqtt.Client(

@@ -1,9 +1,31 @@
-# Integrasi sensor (publisher + bridge). Versi dibatasi pada major yang teruji.
-# Publisher (wajib di Orange Pi / Raspberry Pi):
-paho-mqtt>=2.0,<3          # client MQTT
-smbus2>=0.4.3              # I2C (MLX90614)
-spidev>=3.5                # SPI (MFRC522)
-# Bridge (menulis ke MySQL db_huawei, schema sama dengan backend):
-sqlalchemy>=2.0
-pymysql>=1.1
-python-dotenv>=1.0
+# ==============================================================================
+# MeaslesCare — Sensor Integration Dependencies (Publisher & Bridge)
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Python Pip Dependencies (Virtual Environment)
+# ------------------------------------------------------------------------------
+paho-mqtt>=2.0,<3          # Client MQTT (Mosquitto communication)
+smbus2>=0.4.3              # I2C driver (MLX90614 infrared temperature sensor)
+spidev>=3.5                # SPI driver (MFRC522 RFID reader)
+sqlalchemy>=2.0            # Database ORM (used by mqtt_bridge)
+pymysql>=1.1               # MySQL/MariaDB driver
+python-dotenv>=1.0         # Environment configuration loader
+
+# ------------------------------------------------------------------------------
+# 2. Ubuntu System Packages (APT — Target: Orange Pi 4 Pro / Ubuntu 22.04 LTS)
+# ------------------------------------------------------------------------------
+# Jalankan via apt:
+#   sudo apt update && sudo apt install -y python3-libgpiod libgpiod2 i2c-tools
+#
+# Catatan penting:
+# - python3-libgpiod menyediakan modul Python 'gpiod' v1.6.3 pada Ubuntu 22.04.
+# - Jika menggunakan Python virtual environment (venv), buat venv dengan flag:
+#     python3 -m venv --system-site-packages .venv-sensor
+#   agar modul sistem 'gpiod' dapat diakses dari dalam virtual environment.
+
+# ------------------------------------------------------------------------------
+# 3. Platform-Specific Fallbacks (Bukan dependency wajib Orange Pi 4 Pro)
+# ------------------------------------------------------------------------------
+# RPi.GPIO>=0.7.0          # HANYA untuk Raspberry Pi hardware fallback
+# OPi.GPIO>=0.1.4          # Legacy Orange Pi (tidak kompatibel Allwinner A733)
