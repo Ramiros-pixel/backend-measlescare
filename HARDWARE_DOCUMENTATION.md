@@ -7,7 +7,7 @@ Dokumentasi hardware & sistem kerja integrasi sensor kiosk: **GPIO tiap sensor**
 | :--- | :--- |
 | Sensor suhu | MLX90614 (GY-906 / HW-691) — IR non-contact, I2C |
 | Sensor RFID | MFRC522 Mini — 13.56 MHz, SPI |
-| Board target | Raspberry Pi / Orange Pi (header 40-pin) |
+| Board target | Raspberry Pi / Orange Pi 4 Pro (Allwinner A733, header 40-pin) |
 | Transport data | MQTT QoS 1 via broker Mosquitto (Docker) |
 | Penerima data | `integrasi_sensor/bridge/mqtt_bridge.py` → MySQL `db_huawei` |
 
@@ -15,42 +15,50 @@ Dokumentasi hardware & sistem kerja integrasi sensor kiosk: **GPIO tiap sensor**
 
 ## 1. GPIO tiap sensor
 
-Nomor pin = **pin fisik header 40-pin (mode BOARD)**. Kolom BCM = nomor GPIO
-yang dipakai pustaka. Pastikan hanya memakai **3.3V** (bukan 5V).
+Nomor pin = **pin fisik header 40-pin (mode BOARD)**. Pastikan hanya memakai
+**3.3V** (bukan 5V). Nomor GPIO/bus di bawah **sudah disesuaikan Orange Pi 4 Pro
+(A733)** — di kolom Raspberry Pi dicantumkan untuk pembanding.
 
 ### 1.1 MLX90614 (GY-906 / HW-691) — I2C
 
-| Kaki modul | Pin fisik (BOARD) | BCM | Arah | Keterangan |
+| Kaki modul | Pin fisik | OPI 4 Pro | RPi (BCM) | Arah |
 | :--- | :--- | :--- | :--- | :--- |
-| VIN | 1 | — | daya | 3.3V |
-| GND | 6 | — | ground | 0V |
-| SDA | 3 | GPIO2 (SDA.1) | data | jalur data I2C |
-| SCL | 5 | GPIO3 (SCL.1) | clock | jalur clock I2C |
+| VIN | 1 | 3.3V | 3.3V | daya |
+| GND | 6 | GND | GND | ground |
+| SDA | 3 | SDA.0 → PB3 (GPIO 35) | GPIO2 (SDA.1) | data |
+| SCL | 5 | SCL.0 → PB2 (GPIO 34) | GPIO3 (SCL.1) | clock |
 
-- Alamat I2C: `0x5A`, bus I2C **1** (`/dev/i2c-1`).
+- Alamat I2C: `0x5A`.
+- **OPI 4 Pro: bus I2C 0** (`/dev/i2c-0`, TWI0) — diaktifkan lewat overlay
+  `i2c0` di `/boot/orangepiEnv.txt`.
+- Raspberry Pi: bus I2C 1 (`/dev/i2c-1`).
 - Jika pembacaan gagal (PEC salah), tambahkan resistor pull-up **4,7 kΩ**
   SDA dan SCL ke 3.3V (sebagian modul GY-906 belum ada pull-up onboard).
 
 ### 1.2 MFRC522 Mini — SPI
 
-| Kaki modul | Pin fisik (BOARD) | BCM | Arah | Keterangan |
+| Kaki modul | Pin fisik | OPI 4 Pro | RPi (BCM) | Arah |
 | :--- | :--- | :--- | :--- | :--- |
-| SDA (SS) | 24 | GPIO8 (CE0) | keluar | chip select SPI |
-| SCK | 23 | GPIO11 (SCLK) | keluar | clock SPI |
-| MOSI | 19 | GPIO10 (MOSI) | keluar | data master → slave |
-| MISO | 21 | GPIO9 (MISO) | masuk | data slave → master |
-| IRQ | — | — | — | tidak dipakai |
-| RST | 22 | GPIO25 | keluar | reset reader (dikendalikan kode) |
-| 3.3V | 1 atau 17 | — | daya | 3.3V |
-| GND | 6 atau 9 | — | ground | 0V |
+| SDA (SS) | 24 | CE.0 → GPIO 140 | GPIO8 (CE0) | chip select |
+| SCK | 23 | SCLK.3 → GPIO 129 | GPIO11 (SCLK) | clock |
+| MOSI | 19 | MOSI.3 → GPIO 130 | GPIO10 (MOSI) | data keluar |
+| MISO | 21 | MISO.3 → GPIO 131 | GPIO9 (MISO) | data masuk |
+| IRQ | — | (tidak dipakai) | — | — |
+| RST | 22 | PD23 (GPIO 119) | GPIO25 | reset reader |
+| 3.3V | 1 atau 17 | 3.3V | 3.3V | daya |
+| GND | 6 atau 9 | GND | GND | ground |
 
-- Bus SPI **0**, device **0** (`/dev/spidev0.0`), clock 1 MHz (default kode).
-- Pin RST dikendalikan driver `mfrc522.py` (mode BOARD, pin 22).
+- **OPI 4 Pro: SPI bus 3** (`/dev/spidev3.0`, SPI3) — diaktifkan lewat overlay
+  `spi3-cs0-cs1-spidev` di `/boot/orangepiEnv.txt`.
+- Raspberry Pi: bus SPI 0, device 0 (`/dev/spidev0.0`).
+- Pin RST dikendalikan driver `mfrc522.py`: prioritas backend **gpiod**
+  (`/dev/gpiochip0`, line 119 pada OPI 4 Pro; override env
+  `MFRC522_RST_CHIP`/`MFRC522_RST_LINE`), fallback `RPi.GPIO`/`OPi.GPIO`
+  mode BOARD untuk Raspberry Pi.
 
-> Catatan Orange Pi: header 40-pin umumnya kompatibel posisinya dengan
-> Raspberry Pi, tapi verifikasi dengan `pinout` / `armbian-config` sebelum
-> menyolder. Kedua driver memakai GPIO otomatis: `RPi.GPIO` di Raspberry Pi,
-> `OPi.GPIO` di Orange Pi.
+> Catatan Orange Pi 4 Pro: pinout 40-pin kompatibel posisi dengan Raspberry Pi,
+> tapi pemetaan fungsinya berbeda (I2C = TWI0 di pin 3/5, SPI = SPI3 di pin
+> 19/21/23/24). Verifikasi dengan `gpio readall` (wiringOP bawaan).
 
 ---
 
@@ -60,15 +68,24 @@ yang dipakai pustaka. Pastikan hanya memakai **3.3V** (bukan 5V).
 
 ```bash
 # 1) Aktifkan I2C dan SPI
-#    Raspberry Pi : sudo raspi-config -> Interface Options -> I2C/SPI: enable
-#    Orange Pi    : sudo armbian-config -> System -> Hardware -> i2c + spidev
-ls /dev/i2c-1 /dev/spidev0.0        # harus ada
+#    Raspberry Pi    : sudo raspi-config -> Interface Options -> I2C/SPI: enable
+#    Orange Pi 4 Pro : edit /boot/orangepiEnv.txt, tambahkan baris:
+#        overlays=i2c0 spi3-cs0-cs1-spidev
+#      lalu reboot (node device-tree TWI0/SPI3 hanya bisa diaktifkan saat boot).
+ls -l /dev/i2c-0 /dev/spidev3.0     # OPI 4 Pro: harus ada setelah reboot
+ls -l /dev/i2c-1 /dev/spidev0.0     # Raspberry Pi: harus ada
 
-# 2) Dependensi Python (venv sendiri, tidak mengganggu backend)
+# 2) Izin akses (OPI 4 Pro): user harus anggota group i2c dan gpio
+sudo usermod -aG i2c,gpio orangepi      # lalu login ulang
+# Aturan udev: /etc/udev/rules.d/90-sensor-permissions.rules
+#   (gpiochip* + spidev -> group gpio, i2c-dev -> group i2c)
+
+# 3) Backend GPIO untuk pin RST MFRC522 (OPI 4 Pro):
+sudo apt-get install -y python3-libgpiod
+
+# 4) Dependensi Python
 cd backend-measlescare
-python3 -m venv .venv-sensor
-source .venv-sensor/bin/activate
-pip install -r integrasi_sensor/requirements.txt
+pip install -r integrasi_sensor/requirements.txt   # di venv yang dipakai
 ```
 
 ### 2.2 Urutan menjalankan

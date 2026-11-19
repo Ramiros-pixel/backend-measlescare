@@ -41,6 +41,10 @@ def main(argv: list[str] | None = None) -> int:
     # dotenv diimpor di sini agar modul tetap bisa diimpor tanpa dependensi
     from dotenv import load_dotenv
 
+    # Baca konfigurasi: .env root backend dulu, lalu config.env integrasi (menang)
+    load_dotenv(ROOT / ".env")
+    load_dotenv(ROOT / "integrasi_sensor" / "config.env")
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--verbose", action="store_true", help="log debug")
     parser.add_argument("--once", action="store_true", help="satu pembacaan lalu keluar")

@@ -27,6 +27,11 @@ except ImportError:
 # Pin fisik (mode BOARD) — sesuaikan bila pinout board Anda berbeda.
 NRSTPD = 22
 
+# Orange Pi 4 Pro (Allwinner A733): pin fisik 22 = PD23 = line 119 di gpiochip0.
+# Dapat dioverride via env MFRC522_RST_CHIP / MFRC522_RST_LINE.
+DEFAULT_RST_CHIP = "/dev/gpiochip0"
+DEFAULT_RST_LINE = 119
+
 # Register MFRC522
 COMMAND_REG = 0x01
 COMIEN_REG = 0x02
@@ -75,6 +80,66 @@ def uid_to_hex(uid: list[int]) -> str:
     return "".join(f"{b:02X}" for b in uid)
 
 
+class _RstGpio:
+    """Kontrol pin RST MFRC522.
+
+    Backend prioritas: gpiod (chardev kernel, bekerja di Sunxi/Allwinner tanpa
+    tabel papan seperti OPi.GPIO). Fallback: RPi.GPIO / OPi.GPIO mode BOARD
+    (Raspberry Pi).
+    """
+
+    def __init__(self, pin_rst: int) -> None:
+        import os
+
+        self._gpio = None
+        self._gpiod_line = None
+        chip_path = os.getenv("MFRC522_RST_CHIP", DEFAULT_RST_CHIP)
+        line_no = int(os.getenv("MFRC522_RST_LINE", str(DEFAULT_RST_LINE)))
+        try:
+            import gpiod
+
+            chip = gpiod.Chip(chip_path)
+            line = chip.get_line(line_no)
+            line.request(
+                consumer="mfrc522-rst",
+                type=gpiod.LINE_REQ_DIR_OUT,
+                default_vals=[1],
+            )
+            self._gpiod_line = line
+            self._chip = chip
+        except (ImportError, OSError, PermissionError):
+            # Fallback lama untuk Raspberry Pi (RPi.GPIO) / Orange Pi (OPi.GPIO)
+            if GPIO is None:
+                raise RuntimeError(
+                    "tidak ada backend GPIO: gpiod (apt install python3-libgpiod) "
+                    "atau RPi.GPIO / OPi.GPIO"
+                )
+            GPIO.setmode(GPIO.BOARD)
+            GPIO.setup(pin_rst, GPIO.OUT)
+            GPIO.output(pin_rst, 1)
+            self._gpio = GPIO
+            self._pin = pin_rst
+
+    def output_high(self) -> None:
+        if self._gpiod_line is not None:
+            self._gpiod_line.set_value(1)
+        elif self._gpio is not None:
+            self._gpio.output(self._pin, 1)
+
+    def cleanup(self) -> None:
+        if self._gpiod_line is not None:
+            try:
+                self._gpiod_line.release()
+                self._chip.close()
+            except Exception:
+                pass
+        elif self._gpio is not None:
+            try:
+                self._gpio.cleanup()
+            except Exception:
+                pass
+
+
 class MFRC522:
     """Pembaca MFRC522 via SPI (spidev) + GPIO.
 
@@ -107,9 +172,8 @@ class MFRC522:
         self._spi.open(bus, device)
         self._spi.max_speed_hz = speed
         self._rst = pin_rst
-        GPIO.setmode(GPIO.BOARD)
-        GPIO.setup(self._rst, GPIO.OUT)
-        GPIO.output(self._rst, 1)
+        self._rst_gpio = _RstGpio(pin_rst)
+        self._rst_gpio.output_high()
         self._init()
 
     # ---------- low level ----------
@@ -200,8 +264,5 @@ class MFRC522:
     def close(self) -> None:
         """Tutup SPI dan bersihkan GPIO."""
         self._spi.close()
-        if GPIO is not None:
-            try:
-                GPIO.cleanup()
-            except Exception:
-                pass
+        if self._rst_gpio is not None:
+            self._rst_gpio.cleanup()

@@ -4,6 +4,8 @@
 .env
 .env.*
 !.env.example
+integrasi_sensor/*.env
+!integrasi_sensor/*.example.env
 
 # Python cache
 __pycache__/
