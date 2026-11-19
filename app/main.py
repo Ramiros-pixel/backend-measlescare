@@ -13,6 +13,7 @@ from app.models import gejala as models
 # Import ini diperlukan agar SQLAlchemy mengenali
 # seluruh tabel sistem pakar pada Base.metadata.
 from app.models import pakar as pakar_models
+from app.models import reconciliation as reconciliation_models
 
 # IMPORT SEEDER
 from app.seeders.pakar_seeder import (
@@ -24,6 +25,7 @@ from app.seeders.pakar_seeder import (
 from app.routers import auth, face, gejala, users, kiosk, kiosk_session
 from app.routers import pakar
 from app.routers import measles
+from app.routers import reconciliation
 
 # FASTAPI APPLICATION
 app = FastAPI(
@@ -84,6 +86,10 @@ app.include_router(
 
 app.include_router(
     measles.router,
+    prefix=settings.API_PREFIX
+)
+app.include_router(
+    reconciliation.router,
     prefix=settings.API_PREFIX
 )
 
