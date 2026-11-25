@@ -14,6 +14,7 @@ from app.models import gejala as models
 # seluruh tabel sistem pakar pada Base.metadata.
 from app.models import pakar as pakar_models
 from app.models import reconciliation as reconciliation_models
+from app.models import sensor as sensor_models
 
 # IMPORT SEEDER
 from app.seeders.pakar_seeder import (

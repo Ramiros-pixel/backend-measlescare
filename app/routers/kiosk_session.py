@@ -9,11 +9,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.security import DbSession, verify_password
-from app.core.rate_limit import rate_limit_session_create
+from app.core.rate_limit import rate_limit_sensor_reading, rate_limit_session_create
 from app.models.gejala import Gejala, User
 from app.models.kiosk_session import KioskDevice, KioskSession
 from app.routers.face import _decode_frame
 from app.services import face_engine
+from app.services.sensor_service import ingest_sensor_reading
 
 router = APIRouter(prefix="/kiosk-session", tags=["Kiosk Session"])
 
@@ -30,6 +31,17 @@ class IdentifyFaceSessionIn(BaseModel):
 class CreateGejalaIn(BaseModel):
     Suhu: float | None = Field(default=None, ge=30, le=45)
     Batuk: str | None = Field(default=None, max_length=20)
+
+
+class SensorReadingIn(BaseModel):
+    event_id: str = Field(min_length=1, max_length=64)
+    device_id: str = Field(min_length=1, max_length=64)
+    rfid_uid: str | None = Field(default=None, max_length=64)
+    object_temp: float | None = None
+    ambient_temp: float | None = None
+    uptime_ms: int | None = None
+    source_format: str = Field(default="esp32", max_length=20)
+    raw_payload: str | None = None
 
 
 def _device_from_key(db: Session, x_kiosk_key: str | None) -> KioskDevice:
@@ -109,6 +121,7 @@ def create_kiosk_session(
     row = KioskSession(
         id_session=session_id,
         id_device=device.id_device,
+        NIK=patient.NIK,
         token_hash=token_hash,
         expires_at=datetime.utcnow() + timedelta(minutes=20),
         revoked=False,
@@ -163,6 +176,7 @@ def identify_face_and_create_session(
     row = KioskSession(
         id_session=session_id,
         id_device=device.id_device,
+        NIK=patient.NIK,
         token_hash=token_hash,
         expires_at=datetime.utcnow() + timedelta(minutes=20),
         revoked=False,
@@ -224,4 +238,20 @@ def revoke_kiosk_session(
     session.revoked = True
     db.commit()
     return {"message": "Sesi kiosk berhasil ditutup", "revoked": True}
+
+
+@router.post("/reading", dependencies=[Depends(rate_limit_sensor_reading)])
+def ingest_sensor_reading_endpoint(
+    payload: SensorReadingIn,
+    db: DbSession,
+    x_kiosk_key: str | None = Header(default=None, alias="X-Kiosk-Key"),
+):
+    """Endpoint internal telemetri sensor (dipanggil bridge, bukan publik).
+
+    Autentikasi perangkat via X-Kiosk-Key; identitas pasien diambil dari
+    sesi aktif perangkat (bukan dari rfid_uid). Seluruh keputusan status
+    direkam di tabel sensor_readings.
+    """
+    device = _device_from_key(db, x_kiosk_key)
+    return ingest_sensor_reading(db, payload.model_dump(), device)
 

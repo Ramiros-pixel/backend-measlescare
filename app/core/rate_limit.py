@@ -83,3 +83,9 @@ rate_limit_session_create = InMemoryRateLimiter(
     window_seconds=60,
     name="session_create",
 )
+
+rate_limit_sensor_reading = InMemoryRateLimiter(
+    max_requests=120,
+    window_seconds=60,
+    name="sensor_reading",
+)

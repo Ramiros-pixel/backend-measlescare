@@ -1,0 +1,25 @@
+[Unit]
+Description=MeaslesCare MQTT Bridge
+Documentation=file:///home/orangepi/backend-measlescare/PHASE_5_1_UNIT_FILES_REPORT.md
+After=network.target mosquitto.service measlescare-backend.service
+Wants=mosquitto.service measlescare-backend.service
+# Appliance: selalu coba pulih. RestartSec=3 mencegah tight-loop.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+WorkingDirectory=/home/orangepi/backend-measlescare
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/orangepi/backend-measlescare/venv/bin/python -m integrasi_sensor.bridge.mqtt_bridge
+Restart=always
+RestartSec=3
+TimeoutStopSec=20
+NoNewPrivileges=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=measlescare-bridge
+
+[Install]
+WantedBy=multi-user.target

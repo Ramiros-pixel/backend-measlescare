@@ -1,0 +1,27 @@
+[Unit]
+Description=MeaslesCare FastAPI Backend
+Documentation=file:///home/orangepi/backend-measlescare/PHASE_5_1_UNIT_FILES_REPORT.md
+After=network.target mariadb.service
+Requires=mariadb.service
+# Appliance: selalu coba pulih. RestartSec=5 mencegah tight-loop.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=orangepi
+Group=orangepi
+WorkingDirectory=/home/orangepi/backend-measlescare
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/orangepi/backend-measlescare/venv/bin/python main.py
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=30
+NoNewPrivileges=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=measlescare-backend
+
+[Install]
+WantedBy=multi-user.target

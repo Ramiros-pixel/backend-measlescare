@@ -112,6 +112,11 @@ class KioskSession(Base):
         nullable=False,
         index=True,
     )
+    NIK: Mapped[str | None] = mapped_column(
+        String(16),
+        ForeignKey("Users.NIK", ondelete="SET NULL"),
+        nullable=True,
+    )
     token_hash: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
