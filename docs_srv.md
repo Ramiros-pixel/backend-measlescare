@@ -295,6 +295,12 @@ membaca `sensor_readings` atau berlangganan MQTT langsung.
 
 ### 6.1 Cakupan pembungkusan
 
+**Ketiganya bukan satu container.** `db`, `backend`, dan `mosquitto` adalah **tiga
+container terpisah** (tiga proses terpisah) yang berbagi satu Docker network. Database
+dan broker tidak menumpang di container backend: backend menghubungi `db:3306` lewat
+nama service, sedangkan Mosquitto punya container dan volume sendiri. Frontend tetap
+di luar Docker sama sekali.
+
 | Environment | Dibungkus Docker? | Bukti |
 | :--- | :--- | :--- |
 | Backend FastAPI | **Ya** | `Dockerfile` + service `backend` (build `.`) |
@@ -722,3 +728,108 @@ frontend-measlescare/
 koneksi native. Nilainya tidak dicetak di dokumen ini. Keduanya harus dianggap
 bocor karena repo di-push ke GitHub publik, dan sebaiknya dirotasi sebelum
 deployment berikutnya.
+
+---
+
+## 12. Rekomendasi deployment Huawei Cloud
+
+### 12.1 Jawaban singkat
+
+**Jangan digabung dalam satu container.** Untuk aplikasi ini, MySQL + Mosquitto +
+FastAPI dalam satu container adalah anti-pattern: satu container seharusnya satu
+proses, `depends_on`/healthcheck per service hilang, volume DB dan log broker
+bercampur, dan restart satu komponen mematikan semuanya. Di cloud konsekuensinya lebih
+mahal lagi: tidak bisa scaling terpisah, tidak bisa memakai managed database, dan
+image backend membengkak oleh state (dataset wajah, model).
+
+Yang benar: tetap **tiga unit terpisah** (db, backend, broker) — tetapi di Huawei Cloud
+dua di antaranya sebaiknya **bukan container sama sekali**, melainkan layanan managed.
+
+### 12.2 Target arsitektur di Huawei Cloud
+
+```
+        KIOSK (di lokasi pasien)                         HUAWEI CLOUD
+ ┌──────────────────────────┐
+ │ Orange Pi + MLX90614     │   MQTT QoS1 over TLS 8883
+ │ + MFRC522 + publisher    │──────────────────────────┐
+ │ (edge, tidak dipindah)   │                          │
+ └──────────────────────────┘                          ▼
+                                          ┌────────────────────────────┐
+                                          │ EMQX / Mosquitto broker    │
+                                          │ di CCE, atau IoTDA managed │
+                                          └─────────────┬──────────────┘
+                                                        │ MQTT internal
+                                                        ▼
+ ┌───────────────┐   HTTPS    ┌───────────────────────────────┐
+ │ Browser / SPA │───────────►│ ELB + TLS (atau APIG)         │
+ │ OBS + CDN     │            │  /api/* → backend:8000        │
+ └───────────────┘            └──────────────┬────────────────┘
+                                             ▼
+                              ┌───────────────────────────────┐
+                              │ CCE / ECS                     │
+                              │  backend  (Deployment, N repl)│
+                              │  bridge   (Deployment, 1 repl)│
+                              └───────┬───────────────┬───────┘
+                                      │               │
+                          ┌───────────▼───┐   ┌───────▼────────────┐
+                          │ RDS for MySQL │   │ OBS / SFS          │
+                          │ 8.0 (managed) │   │ dataset wajah, ONNX│
+                          └───────────────┘   └────────────────────┘
+```
+
+### 12.3 Pilihan sesuai skenario
+
+| Skenario | Database | Broker MQTT | Backend + bridge | Frontend | Catatan |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| Demo / kompetisi (1 host) | container `mysql:8.4` + volume EVS | container `eclipse-mosquitto:2` | container backend + bridge | OBS statis / Vercel | 3 container via compose; murah, tidak HA |
+| Pilot / produksi kecil | **RDS for MySQL** | Mosquitto/EMQX container di ECS/CCE | container backend + bridge | OBS + CDN | backup & patch DB otomatis |
+| Produksi penuh | RDS HA | EMQX cluster atau **IoTDA** | CCE 2+ replica backend + 1 bridge | OBS + CDN + WAF | ELB, autoscaling, LTS/AOM |
+
+Catatan broker: **IoTDA** memang MQTT managed, tetapi model topik/autentikasi
+perangkatnya berbeda (`$oc/devices/...`), sehingga publisher dan bridge perlu
+diadaptasi — bridge bisa diganti consumer DMS. Kalau ingin kode sensor hampir tidak
+berubah, pakai EMQX/Mosquitto milik sendiri dengan TLS 8883 + kredensial per device.
+
+### 12.4 Blocker yang harus dibereskan sebelum pindah
+
+| # | Blocker | Dampak di cloud | Tindakan |
+| ---: | :--- | :--- | :--- |
+| 1 | `face_engine` menulis dataset & model ke `process-recognation/` lokal | replica backend >1 akan punya state berbeda | mount SFS, atau 1 replica + volume EVS, atau pindah ke OBS dengan sinkronisasi |
+| 2 | Rate limit in-memory per proses | batas efektif = limit × jumlah replica | DCS Redis atau rate limit di ELB/APIG |
+| 3 | `API_PREFIX=""` khusus funnel | route bisa dobel/gagal di ELB | pertahankan `/api` di app; ELB meneruskan path apa adanya |
+| 4 | Kredensial DB hardcoded | bocor di image/repo | rotasi + KMS/secret, inject via env |
+| 5 | `SECRET_KEY=change-me`, CORS `*` | JWT bisa dipalsukan, origin bebas | set secret acak, pin domain frontend |
+| 6 | Broker anonim di 1883 | data kesehatan terbuka | TLS 8883 + `password_file`/ACL per device |
+| 7 | MariaDB 10.6 → RDS MySQL 8.0 | perbedaan tipe/collation bisa muncul | uji `create_all` + migrasi di staging, bandingkan row count |
+| 8 | Image memuat `process-recognation/` dan `deploy/` | image besar, state tidak perlu | perbaiki `.dockerignore`, state keluar dari image |
+
+### 12.5 Urutan migrasi
+
+1. Rotasi kredensial; siapkan `.env` produksi di secret manager.
+2. Build image backend+bridge untuk x86, push ke **SWR**; satu image, dua command
+   (`uvicorn app.main:app` dan `python -m integrasi_sensor.bridge.mqtt_bridge`).
+3. Buat **RDS for MySQL**, `mysqldump --single-transaction` dari MariaDB, import,
+   verifikasi 15 tabel dan jumlah baris.
+4. Deploy broker (EMQX/Mosquitto dengan volume persisten + TLS + auth) atau siapkan
+   IoTDA beserta adaptasi topik/payload.
+5. Deploy backend (2 replica) dan bridge (1 replica) di CCE/ECS; bridge tetap
+   memakai `X-Kiosk-Key` dan `BACKEND_URL` internal.
+6. Pasang **ELB + TLS + domain**, arahkan `/api/*` ke backend; frontend statis ke
+   **OBS + CDN** (isi `VITE_API_BASE_URL`).
+7. Security group: hanya 443 dari internet; 8000/3306/1883 internal; MQTT device
+   lewat 8883.
+8. Observability: log ke **LTS**, metrik ke **AOM**, backup otomatis RDS; uji
+   restore, bukan hanya uji backup.
+
+### 12.6 Yang jangan dilakukan
+
+- Menjalankan MySQL/Mosquitto di dalam container backend (satu container multi-proses
+  via supervisord) — rapuh dan tidak bisa di-scale.
+- Menaruh dataset wajah/model di dalam image backend — setiap update model jadi
+  rebuild, dan replica tidak konsisten.
+- Mengekspos 3306 atau 1883 langsung ke internet.
+- Memakai satu container untuk frontend + backend — frontend cukup OBS/CDN.
+- Mengandalkan Tailscale funnel sebagai jalur produksi; di cloud pakai ELB/APIG.
+
+Satu container hanya masuk akal untuk eksperimen lokal sekali pakai, bukan untuk
+aplikasi ini — apalagi setelah pindah ke cloud.
